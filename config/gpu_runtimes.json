@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "providers": {
+    "cuda": {
+      "enabled": true,
+      "vendors": [
+        "nvidia"
+      ],
+      "backend": "ctranslate2",
+      "device": "cuda",
+      "version": "cuda12.4-cudnn9.1-v1",
+      "min_driver": "551.61",
+      "min_compute": 6.0,
+      "max_compute": 9.0,
+      "files": [
+        {
+          "name": "nvidia_cublas_cu12-12.4.5.8-py3-none-win_amd64.whl",
+          "url": "https://files.pythonhosted.org/packages/e2/2a/4f27ca96232e8b5269074a72e03b4e0d43aa68c9b965058b1684d07c6ff8/nvidia_cublas_cu12-12.4.5.8-py3-none-win_amd64.whl",
+          "size": 396895858,
+          "sha256": "5a796786da89203a0657eda402bcdcec6180254a8ac22d72213abc42069522dc"
+        },
+        {
+          "name": "nvidia_cudnn_cu12-9.1.1.17-py3-none-win_amd64.whl",
+          "url": "https://files.pythonhosted.org/packages/a5/0a/4a3852f359aa6043369217155c4b905226634025d1b9c605286fdb823847/nvidia_cudnn_cu12-9.1.1.17-py3-none-win_amd64.whl",
+          "size": 679928156,
+          "sha256": "d7c4b96b1c5ca8e4dc0bdbf2ce386903ba03faa94d2997b72769fa5048cb5f1f"
+        },
+        {
+          "name": "nvidia_cuda_nvrtc_cu12-12.4.99-py3-none-win_amd64.whl",
+          "url": "https://files.pythonhosted.org/packages/77/a2/9b6d13f198ca2895fed9c21bd93a3e764239664066e6c14fdb68345c0106/nvidia_cuda_nvrtc_cu12-12.4.99-py3-none-win_amd64.whl",
+          "size": 19778540,
+          "sha256": "0d4f0b6bd29176d11f3dcd68075e64082e5bb8af56314c5021a4ec57daf22cf4"
+        }
+      ],
+      "dll_dirs": [
+        "nvidia/cublas/bin",
+        "nvidia/cudnn/bin",
+        "nvidia/cuda_nvrtc/bin"
+      ]
+    },
+    "openvino": {
+      "enabled": false,
+      "vendors": [
+        "intel"
+      ],
+      "backend": "openvino",
+      "reason": "This GPU is detected, but its transcription backend is not available in this release. Using CPU."
+    },
+    "vulkan": {
+      "enabled": false,
+      "vendors": [
+        "amd"
+      ],
+      "backend": "whispercpp",
+      "reason": "This GPU is detected, but its transcription backend is not available in this release. Using CPU."
+    }
+  }
+}

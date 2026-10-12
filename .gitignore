@@ -1,0 +1,16 @@
+.venv/
+node_modules/
+dist/
+release/
+.build/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.log
+test-results/
+data/
+benchmarks/
+docs/
+
+# Private coding-agent reference; never force-add or publish.
+/PROJECT_SPEC.md

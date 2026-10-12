@@ -1,0 +1,558 @@
+{
+  "schema_version": 1,
+  "languages": {
+    "fr": {
+      "label": "French",
+      "model": "bofenghuang/whisper-large-v3-french-distil-dec16",
+      "source_revision": "16bd02185bdaa6b00fb4b0deb46e47ac1b754b8e",
+      "ct2_model": "nunu-willump/whisper-large-v3-french-distil-dec16-ct2",
+      "revision": "b259ae49f9fdc9fac3ec293a0019f1d04646eb58",
+      "backend": "ctranslate2",
+      "license": "mit",
+      "requires_conversion": false,
+      "files": {
+        "config.json": {
+          "size": 7080,
+          "sha256": "972504e5cac665df6f58565cdefc7bc9dd6f9ee33df0f5eec3dae32521cf6493",
+          "url": "https://huggingface.co/nunu-willump/whisper-large-v3-french-distil-dec16-ct2/resolve/b259ae49f9fdc9fac3ec293a0019f1d04646eb58/config.json"
+        },
+        "model.bin": {
+          "size": 2247627421,
+          "sha256": "3fb4a2ac35540f921ed51804edd19d6b8f02cfc45956472fb6635965a339da5c",
+          "url": "https://huggingface.co/nunu-willump/whisper-large-v3-french-distil-dec16-ct2/resolve/b259ae49f9fdc9fac3ec293a0019f1d04646eb58/model.bin"
+        },
+        "preprocessor_config.json": {
+          "size": 340,
+          "sha256": "7ccc62c6f2765af1f3b46c00c9b5894426835a05021c8b9c01eecb6dfb542711",
+          "url": "https://huggingface.co/nunu-willump/whisper-large-v3-french-distil-dec16-ct2/resolve/b259ae49f9fdc9fac3ec293a0019f1d04646eb58/preprocessor_config.json"
+        },
+        "tokenizer.json": {
+          "size": 2481353,
+          "sha256": "2643978e28839bf07b107b647217dfd7568344cb87eab65e1fd3685c511f2571",
+          "url": "https://huggingface.co/nunu-willump/whisper-large-v3-french-distil-dec16-ct2/resolve/b259ae49f9fdc9fac3ec293a0019f1d04646eb58/tokenizer.json"
+        },
+        "vocabulary.json": {
+          "size": 1068114,
+          "sha256": "c69260f2ab26d659b7c398f9a2b2b48ed0df16c3b47d7326782fd9cba71690c1",
+          "url": "https://huggingface.co/nunu-willump/whisper-large-v3-french-distil-dec16-ct2/resolve/b259ae49f9fdc9fac3ec293a0019f1d04646eb58/vocabulary.json"
+        }
+      },
+      "chunk_seconds": 40,
+      "sweet_spot": {
+        "compute_type": "float16",
+        "concurrency": 2
+      },
+      "fallback_order": [
+        {
+          "compute_type": "float16",
+          "concurrency": 1
+        },
+        {
+          "compute_type": "int8_float16",
+          "concurrency": 2
+        },
+        {
+          "compute_type": "int8_float16",
+          "concurrency": 1
+        },
+        {
+          "compute_type": "int8",
+          "concurrency": 1
+        }
+      ],
+      "provisional_gpu_order": [
+        {
+          "compute_type": "int8_float16",
+          "concurrency": 1
+        }
+      ],
+      "cpu_fallback_order": [
+        {
+          "compute_type": "int8_float32",
+          "concurrency": 1
+        },
+        {
+          "compute_type": "float32",
+          "concurrency": 1
+        }
+      ],
+      "benchmark_status": "user_specified",
+      "validation_status": "validated",
+      "transcribe": {
+        "beam_size": 5,
+        "vad_filter": false,
+        "condition_on_previous_text": true
+      },
+      "benchmark": {
+        "gpu": "Tesla T4, 580.178.04, 15360 MiB\nTesla T4, 580.178.04, 15360 MiB\n",
+        "date_utc": "2026-10-08T12:22:13Z",
+        "versions": {
+          "ctranslate2": "4.8.2",
+          "faster-whisper": "1.2.1",
+          "transformers": "4.57.6",
+          "torch": "2.11.0+cu128"
+        },
+        "dataset": "google/fleurs test, first 6 samples per language with 0.5-second separators",
+        "gpu_repeats": 3,
+        "warmup_repeats": 1,
+        "cpu_repeats": 2,
+        "scope": "Small T4 pilot; preferred among tested candidates, not a universal optimum or domain-quality certification.",
+        "selection": "Mean RTF after warmup; <=1 pp WER/CER regression vs FP16x1; prefer lower VRAM within 5% of fastest.",
+        "report": "docs/evidence/kaggle-profiles/benchmark-results.json",
+        "report_sha256": "cae0de9cbb18f6137ae3cbbd5ef53fcd963496ac581982a961512d544cbe6fc8",
+        "cpu_profiles": [
+          {
+            "device": "cpu",
+            "compute_type": "int8_float32",
+            "concurrency": 1
+          },
+          {
+            "device": "cpu",
+            "compute_type": "float32",
+            "concurrency": 1
+          }
+        ],
+        "cpu_quality_policy": "Only candidates within 1 pp WER/CER of CPU FP32 are enabled; INT8 first when eligible."
+      },
+      "legacy_ct2_revisions": [
+        "16bd02185bdaa6b00fb4b0deb46e47ac1b754b8e"
+      ]
+    },
+    "en": {
+      "label": "English",
+      "model": "distil-whisper/distil-large-v3.5-ct2",
+      "source_revision": "9793ccc07920e0f830e1dba0343efcdf0ef8c903",
+      "ct2_model": "nunu-willump/distil-large-v3.5-ct2",
+      "revision": "ad174880168211c2d2d39f5721b8a4308b61ec92",
+      "backend": "ctranslate2",
+      "license": "mit",
+      "requires_conversion": false,
+      "files": {
+        "config.json": {
+          "size": 2690,
+          "sha256": "90c55f775cc4e0bb17293d0bf12f96557a486f20dea886fabd8e6075a3588b21",
+          "url": "https://huggingface.co/nunu-willump/distil-large-v3.5-ct2/resolve/ad174880168211c2d2d39f5721b8a4308b61ec92/config.json"
+        },
+        "model.bin": {
+          "size": 1512927867,
+          "sha256": "c58b88b8585ffcd2135fddaaf421ce72cb223b32edea70d156aed1dea319a119",
+          "url": "https://huggingface.co/nunu-willump/distil-large-v3.5-ct2/resolve/ad174880168211c2d2d39f5721b8a4308b61ec92/model.bin"
+        },
+        "preprocessor_config.json": {
+          "size": 340,
+          "sha256": "7ccc62c6f2765af1f3b46c00c9b5894426835a05021c8b9c01eecb6dfb542711",
+          "url": "https://huggingface.co/nunu-willump/distil-large-v3.5-ct2/resolve/ad174880168211c2d2d39f5721b8a4308b61ec92/preprocessor_config.json"
+        },
+        "tokenizer.json": {
+          "size": 2480645,
+          "sha256": "b3c8202bbf06d8ee4232c5984baa563784ac4737e2e7fdc42fa180200d3cfcdb",
+          "url": "https://huggingface.co/nunu-willump/distil-large-v3.5-ct2/resolve/ad174880168211c2d2d39f5721b8a4308b61ec92/tokenizer.json"
+        },
+        "vocabulary.json": {
+          "size": 1068114,
+          "sha256": "c69260f2ab26d659b7c398f9a2b2b48ed0df16c3b47d7326782fd9cba71690c1",
+          "url": "https://huggingface.co/nunu-willump/distil-large-v3.5-ct2/resolve/ad174880168211c2d2d39f5721b8a4308b61ec92/vocabulary.json"
+        }
+      },
+      "chunk_seconds": 30,
+      "sweet_spot": {
+        "compute_type": "int8_float16",
+        "concurrency": 2
+      },
+      "fallback_order": [
+        {
+          "compute_type": "float16",
+          "concurrency": 2
+        },
+        {
+          "compute_type": "int8_float16",
+          "concurrency": 1
+        },
+        {
+          "compute_type": "float16",
+          "concurrency": 1
+        }
+      ],
+      "provisional_gpu_order": [
+        {
+          "compute_type": "int8_float16",
+          "concurrency": 1
+        }
+      ],
+      "cpu_fallback_order": [
+        {
+          "compute_type": "float32",
+          "concurrency": 1
+        }
+      ],
+      "benchmark_status": "validated",
+      "validation_status": "validated",
+      "transcribe": {
+        "beam_size": 5,
+        "vad_filter": false,
+        "condition_on_previous_text": false
+      },
+      "benchmark": {
+        "gpu": "Tesla T4, 580.178.04, 15360 MiB\nTesla T4, 580.178.04, 15360 MiB\n",
+        "date_utc": "2026-10-08T12:22:13Z",
+        "versions": {
+          "ctranslate2": "4.8.2",
+          "faster-whisper": "1.2.1",
+          "transformers": "4.57.6",
+          "torch": "2.11.0+cu128"
+        },
+        "dataset": "google/fleurs test, first 6 samples per language with 0.5-second separators",
+        "gpu_repeats": 3,
+        "warmup_repeats": 1,
+        "cpu_repeats": 2,
+        "scope": "Small T4 pilot; preferred among tested candidates, not a universal optimum or domain-quality certification.",
+        "selection": "Mean RTF after warmup; <=1 pp WER/CER regression vs FP16x1; prefer lower VRAM within 5% of fastest.",
+        "report": "docs/evidence/kaggle-profiles/benchmark-results.json",
+        "report_sha256": "cae0de9cbb18f6137ae3cbbd5ef53fcd963496ac581982a961512d544cbe6fc8",
+        "cpu_profiles": [
+          {
+            "device": "cpu",
+            "compute_type": "int8_float32",
+            "concurrency": 1
+          },
+          {
+            "device": "cpu",
+            "compute_type": "float32",
+            "concurrency": 1
+          }
+        ],
+        "cpu_quality_policy": "Only candidates within 1 pp WER/CER of CPU FP32 are enabled; INT8 first when eligible."
+      },
+      "legacy_ct2_revisions": [
+        "9793ccc07920e0f830e1dba0343efcdf0ef8c903"
+      ]
+    },
+    "es": {
+      "label": "Spanish",
+      "model": "adriszmar/whisper-large-v3-turbo-es",
+      "source_revision": "b32b7042f31dbf695857e3a81037a43b97f1eee1",
+      "ct2_model": "nunu-willump/whisper-large-v3-turbo-es-ct2",
+      "revision": "a941c12bf808bf9e98b3d115f53dd33bd2b4e18b",
+      "backend": "ctranslate2",
+      "license": "mit",
+      "requires_conversion": false,
+      "files": {
+        "config.json": {
+          "size": 1405,
+          "sha256": "c805eff43fc2a1d00d5cfa315e4b2230895f34994257c185959808a116e7c4f0",
+          "url": "https://huggingface.co/nunu-willump/whisper-large-v3-turbo-es-ct2/resolve/a941c12bf808bf9e98b3d115f53dd33bd2b4e18b/config.json"
+        },
+        "model.bin": {
+          "size": 1617884929,
+          "sha256": "9be7a91a9fb34663c47ce082481b52d96c2addcb6899c000f80b7a7cd3958e76",
+          "url": "https://huggingface.co/nunu-willump/whisper-large-v3-turbo-es-ct2/resolve/a941c12bf808bf9e98b3d115f53dd33bd2b4e18b/model.bin"
+        },
+        "tokenizer.json": {
+          "size": 3930645,
+          "sha256": "5c1bf30c9e716e1477bedef846b01be0013daecb89e9e3ef7ab89b23c178df1b",
+          "url": "https://huggingface.co/nunu-willump/whisper-large-v3-turbo-es-ct2/resolve/a941c12bf808bf9e98b3d115f53dd33bd2b4e18b/tokenizer.json"
+        },
+        "preprocessor_config.json": {
+          "size": 340,
+          "sha256": "7ccc62c6f2765af1f3b46c00c9b5894426835a05021c8b9c01eecb6dfb542711",
+          "url": "https://huggingface.co/nunu-willump/whisper-large-v3-turbo-es-ct2/resolve/a941c12bf808bf9e98b3d115f53dd33bd2b4e18b/preprocessor_config.json"
+        },
+        "vocabulary.json": {
+          "size": 1068114,
+          "sha256": "c69260f2ab26d659b7c398f9a2b2b48ed0df16c3b47d7326782fd9cba71690c1",
+          "url": "https://huggingface.co/nunu-willump/whisper-large-v3-turbo-es-ct2/resolve/a941c12bf808bf9e98b3d115f53dd33bd2b4e18b/vocabulary.json"
+        }
+      },
+      "chunk_seconds": 30,
+      "sweet_spot": {
+        "compute_type": "int8_float16",
+        "concurrency": 2
+      },
+      "fallback_order": [
+        {
+          "compute_type": "float16",
+          "concurrency": 2
+        },
+        {
+          "compute_type": "int8_float16",
+          "concurrency": 1
+        },
+        {
+          "compute_type": "float16",
+          "concurrency": 1
+        }
+      ],
+      "provisional_gpu_order": [
+        {
+          "compute_type": "int8_float16",
+          "concurrency": 1
+        }
+      ],
+      "cpu_fallback_order": [
+        {
+          "compute_type": "int8_float32",
+          "concurrency": 1
+        },
+        {
+          "compute_type": "float32",
+          "concurrency": 1
+        }
+      ],
+      "benchmark_status": "validated",
+      "validation_status": "validated",
+      "transcribe": {
+        "beam_size": 5,
+        "vad_filter": false,
+        "condition_on_previous_text": true
+      },
+      "benchmark": {
+        "gpu": "Tesla T4, 580.178.04, 15360 MiB\nTesla T4, 580.178.04, 15360 MiB\n",
+        "date_utc": "2026-10-08T12:22:13Z",
+        "versions": {
+          "ctranslate2": "4.8.2",
+          "faster-whisper": "1.2.1",
+          "transformers": "4.57.6",
+          "torch": "2.11.0+cu128"
+        },
+        "dataset": "google/fleurs test, first 6 samples per language with 0.5-second separators",
+        "gpu_repeats": 3,
+        "warmup_repeats": 1,
+        "cpu_repeats": 2,
+        "scope": "Small T4 pilot; preferred among tested candidates, not a universal optimum or domain-quality certification.",
+        "selection": "Mean RTF after warmup; <=1 pp WER/CER regression vs FP16x1; prefer lower VRAM within 5% of fastest.",
+        "report": "docs/evidence/kaggle-profiles/benchmark-results.json",
+        "report_sha256": "cae0de9cbb18f6137ae3cbbd5ef53fcd963496ac581982a961512d544cbe6fc8",
+        "cpu_profiles": [
+          {
+            "device": "cpu",
+            "compute_type": "int8_float32",
+            "concurrency": 1
+          },
+          {
+            "device": "cpu",
+            "compute_type": "float32",
+            "concurrency": 1
+          }
+        ],
+        "cpu_quality_policy": "Only candidates within 1 pp WER/CER of CPU FP32 are enabled; INT8 first when eligible."
+      },
+      "legacy_ct2_revisions": [
+        "b32b7042f31dbf695857e3a81037a43b97f1eee1"
+      ]
+    },
+    "de": {
+      "label": "German",
+      "model": "primeline/whisper-large-v3-turbo-german",
+      "source_revision": "9e7012dad9247f07553aac8a99c4d50ad7c3d36d",
+      "ct2_model": "nunu-willump/whisper-large-v3-turbo-german-ct2",
+      "revision": "ceabc7505347e4fcafbe2766ca39b82a3e6e3faa",
+      "backend": "ctranslate2",
+      "license": "apache-2.0",
+      "requires_conversion": false,
+      "files": {
+        "config.json": {
+          "size": 2263,
+          "sha256": "b0253ea6c0d3bea6b1e19e91a02acfd3b53f4467362efcb5a3e6b16c9b3a9b7e",
+          "url": "https://huggingface.co/nunu-willump/whisper-large-v3-turbo-german-ct2/resolve/ceabc7505347e4fcafbe2766ca39b82a3e6e3faa/config.json"
+        },
+        "model.bin": {
+          "size": 1617884929,
+          "sha256": "806a39e93503afcfc9480d271d7b4a8202fc60566179ca22d8fe1392b83c0dcf",
+          "url": "https://huggingface.co/nunu-willump/whisper-large-v3-turbo-german-ct2/resolve/ceabc7505347e4fcafbe2766ca39b82a3e6e3faa/model.bin"
+        },
+        "preprocessor_config.json": {
+          "size": 340,
+          "sha256": "7ccc62c6f2765af1f3b46c00c9b5894426835a05021c8b9c01eecb6dfb542711",
+          "url": "https://huggingface.co/nunu-willump/whisper-large-v3-turbo-german-ct2/resolve/ceabc7505347e4fcafbe2766ca39b82a3e6e3faa/preprocessor_config.json"
+        },
+        "tokenizer.json": {
+          "size": 3930645,
+          "sha256": "5c1bf30c9e716e1477bedef846b01be0013daecb89e9e3ef7ab89b23c178df1b",
+          "url": "https://huggingface.co/nunu-willump/whisper-large-v3-turbo-german-ct2/resolve/ceabc7505347e4fcafbe2766ca39b82a3e6e3faa/tokenizer.json"
+        },
+        "vocabulary.json": {
+          "size": 1068114,
+          "sha256": "c69260f2ab26d659b7c398f9a2b2b48ed0df16c3b47d7326782fd9cba71690c1",
+          "url": "https://huggingface.co/nunu-willump/whisper-large-v3-turbo-german-ct2/resolve/ceabc7505347e4fcafbe2766ca39b82a3e6e3faa/vocabulary.json"
+        }
+      },
+      "chunk_seconds": 30,
+      "sweet_spot": {
+        "compute_type": "int8_float16",
+        "concurrency": 2
+      },
+      "fallback_order": [
+        {
+          "compute_type": "float16",
+          "concurrency": 2
+        },
+        {
+          "compute_type": "int8_float16",
+          "concurrency": 1
+        },
+        {
+          "compute_type": "float16",
+          "concurrency": 1
+        }
+      ],
+      "provisional_gpu_order": [
+        {
+          "compute_type": "int8_float16",
+          "concurrency": 1
+        }
+      ],
+      "cpu_fallback_order": [
+        {
+          "compute_type": "int8_float32",
+          "concurrency": 1
+        },
+        {
+          "compute_type": "float32",
+          "concurrency": 1
+        }
+      ],
+      "benchmark_status": "validated",
+      "validation_status": "validated",
+      "transcribe": {
+        "beam_size": 5,
+        "vad_filter": false,
+        "condition_on_previous_text": true
+      },
+      "benchmark": {
+        "gpu": "Tesla T4, 580.178.04, 15360 MiB\nTesla T4, 580.178.04, 15360 MiB\n",
+        "date_utc": "2026-10-08T12:22:13Z",
+        "versions": {
+          "ctranslate2": "4.8.2",
+          "faster-whisper": "1.2.1",
+          "transformers": "4.57.6",
+          "torch": "2.11.0+cu128"
+        },
+        "dataset": "google/fleurs test, first 6 samples per language with 0.5-second separators",
+        "gpu_repeats": 3,
+        "warmup_repeats": 1,
+        "cpu_repeats": 2,
+        "scope": "Small T4 pilot; preferred among tested candidates, not a universal optimum or domain-quality certification.",
+        "selection": "Mean RTF after warmup; <=1 pp WER/CER regression vs FP16x1; prefer lower VRAM within 5% of fastest.",
+        "report": "docs/evidence/kaggle-profiles/benchmark-results.json",
+        "report_sha256": "cae0de9cbb18f6137ae3cbbd5ef53fcd963496ac581982a961512d544cbe6fc8",
+        "cpu_profiles": [
+          {
+            "device": "cpu",
+            "compute_type": "int8_float32",
+            "concurrency": 1
+          },
+          {
+            "device": "cpu",
+            "compute_type": "float32",
+            "concurrency": 1
+          }
+        ],
+        "cpu_quality_policy": "Only candidates within 1 pp WER/CER of CPU FP32 are enabled; INT8 first when eligible."
+      },
+      "legacy_ct2_revisions": [
+        "05ec0ada7488f2f7a05f1276733f7305d4d019f8"
+      ]
+    },
+    "vi": {
+      "label": "Vietnamese",
+      "model": "vinai/PhoWhisper-medium",
+      "source_revision": "55a7e3eb6c906de891f8f06a107754427dd3be79",
+      "ct2_model": "nunu-willump/PhoWhisper-medium-ct2",
+      "revision": "84fd238d9263ad77752ebb2fafb3402049199ef0",
+      "backend": "ctranslate2",
+      "license": "bsd-3-clause",
+      "requires_conversion": false,
+      "files": {
+        "config.json": {
+          "size": 2257,
+          "sha256": "3622a2ddc41ec0e0fd4e68c13c6830f03b90c38d89aaad184de02c8c642cf807",
+          "url": "https://huggingface.co/nunu-willump/PhoWhisper-medium-ct2/resolve/84fd238d9263ad77752ebb2fafb3402049199ef0/config.json"
+        },
+        "model.bin": {
+          "size": 1527906453,
+          "sha256": "0fa00f4407a8d7099762e60e36e44eca81279ec17cf4708df040ffd6bc337b7e",
+          "url": "https://huggingface.co/nunu-willump/PhoWhisper-medium-ct2/resolve/84fd238d9263ad77752ebb2fafb3402049199ef0/model.bin"
+        },
+        "tokenizer.json": {
+          "size": 3654002,
+          "sha256": "ef1cbdefa54ee88b08dccac83fc994fa69e45988abf0f46fecfeb2e08ac9e306",
+          "url": "https://huggingface.co/nunu-willump/PhoWhisper-medium-ct2/resolve/84fd238d9263ad77752ebb2fafb3402049199ef0/tokenizer.json"
+        },
+        "preprocessor_config.json": {
+          "size": 339,
+          "sha256": "a6a76d28c93edb273669eb9e0b0636a2bddbb1272c3261e47b7ca6dfdbac1b8d",
+          "url": "https://huggingface.co/nunu-willump/PhoWhisper-medium-ct2/resolve/84fd238d9263ad77752ebb2fafb3402049199ef0/preprocessor_config.json"
+        },
+        "vocabulary.json": {
+          "size": 1068103,
+          "sha256": "5ad28279db5e546349708b9a74736e2c018737ac5a600f1048f1f26c99b85b47",
+          "url": "https://huggingface.co/nunu-willump/PhoWhisper-medium-ct2/resolve/84fd238d9263ad77752ebb2fafb3402049199ef0/vocabulary.json"
+        }
+      },
+      "chunk_seconds": 30,
+      "sweet_spot": {
+        "compute_type": "float16",
+        "concurrency": 2
+      },
+      "fallback_order": [
+        {
+          "compute_type": "float16",
+          "concurrency": 1
+        }
+      ],
+      "provisional_gpu_order": [
+        {
+          "compute_type": "int8_float16",
+          "concurrency": 1
+        }
+      ],
+      "cpu_fallback_order": [
+        {
+          "compute_type": "float32",
+          "concurrency": 1
+        }
+      ],
+      "benchmark_status": "validated",
+      "validation_status": "validated",
+      "transcribe": {
+        "beam_size": 5,
+        "vad_filter": false,
+        "condition_on_previous_text": true
+      },
+      "benchmark": {
+        "gpu": "Tesla T4, 580.178.04, 15360 MiB\nTesla T4, 580.178.04, 15360 MiB\n",
+        "date_utc": "2026-10-08T12:22:13Z",
+        "versions": {
+          "ctranslate2": "4.8.2",
+          "faster-whisper": "1.2.1",
+          "transformers": "4.57.6",
+          "torch": "2.11.0+cu128"
+        },
+        "dataset": "google/fleurs test, first 6 samples per language with 0.5-second separators",
+        "gpu_repeats": 3,
+        "warmup_repeats": 1,
+        "cpu_repeats": 2,
+        "scope": "Small T4 pilot; preferred among tested candidates, not a universal optimum or domain-quality certification.",
+        "selection": "Mean RTF after warmup; <=1 pp WER/CER regression vs FP16x1; prefer lower VRAM within 5% of fastest.",
+        "report": "docs/evidence/kaggle-profiles/benchmark-results.json",
+        "report_sha256": "cae0de9cbb18f6137ae3cbbd5ef53fcd963496ac581982a961512d544cbe6fc8",
+        "cpu_profiles": [
+          {
+            "device": "cpu",
+            "compute_type": "int8_float32",
+            "concurrency": 1
+          },
+          {
+            "device": "cpu",
+            "compute_type": "float32",
+            "concurrency": 1
+          }
+        ],
+        "cpu_quality_policy": "Only candidates within 1 pp WER/CER of CPU FP32 are enabled; INT8 first when eligible."
+      },
+      "legacy_ct2_revisions": [
+        "55a7e3eb6c906de891f8f06a107754427dd3be79"
+      ]
+    }
+  }
+}

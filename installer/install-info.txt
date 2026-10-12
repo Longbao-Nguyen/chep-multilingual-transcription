@@ -1,0 +1,21 @@
+Chep
+
+Transcribe French, English, Spanish, German and Vietnamese on your computer or optionally with Kaggle GPU.
+
+- Windows 10/11, 64-bit. GPU acceleration or CPU mode.
+- Python and CPU libraries are included. GPU runtimes and models are optional downloads.
+- Choose separate application and data folders during installation.
+- Optional Components lets you choose downloads for first launch, or skip and add them later.
+- Setup saves your choices; large downloads run in the app, with pause and retry controls.
+- All languages download ready CTranslate2 models. PyTorch and model conversion are not required.
+- Local GPU / CPU processing works offline after model download; audio stays on your computer.
+- Optional Online GPU (Kaggle, free) uploads audio to your private Kaggle account. Sign-in, Internet and available Kaggle GPU quota are required.
+- Kaggle CLI downloads separately in the app; no Kaggle package or transcription model is bundled.
+- Use the desktop shortcut to open the interface in your browser.
+- Closing the last Chep tab asks: Quit completely or Run in background. Close Chep in the sidebar offers the same choices.
+- Quit saves your queue and stops local work. Background keeps processing. Already submitted Kaggle notebooks may continue remotely.
+- Stop Chep in the Start Menu also shuts down the local application.
+- If the Microsoft Visual C++ runtime is missing, Windows may ask for administrator approval to install it.
+- GPU mode requires supported hardware and a compatible driver. Ineligible machines continue on CPU.
+
+This is version 0.6.0. Existing transcripts and history are preserved when using the same data folder. Upgrades remove previously bundled GPU and conversion libraries from the application folder.

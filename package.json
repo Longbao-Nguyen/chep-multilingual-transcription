@@ -1,0 +1,21 @@
+{
+  "name": "french-transcript-local",
+  "private": true,
+  "version": "0.6.1",
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit && vite build",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "lucide-react": "0.546.0",
+    "react": "19.0.1",
+    "react-dom": "19.0.1"
+  },
+  "devDependencies": {
+    "@types/react": "19.0.12",
+    "@types/react-dom": "19.0.4",
+    "typescript": "5.8.3",
+    "vite": "6.4.4"
+  }
+}
