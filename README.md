@@ -80,7 +80,7 @@ Different language subsets are not a model ranking. French preserves an explicit
 Available long-form CT2 measurements use the same nine private recordings totaling 45,608.52 seconds on a T4:
 
 | Pipeline | Backend | Input chunk | Parallel chunks | Workers | Inference | Peak VRAM | Quality evidence |
-| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| --- | --- | --- | ---: | ---: | ---: | ---: | --- |
 | Full French model, baseline | PyTorch | 120 s | 4 | — | 8,591.22 s | 10,100 MiB | - |
 | Distil-dec16, baseline | PyTorch | 120 s | 4 | — | 5,570.73 s (35.2% faster) | 6,085 MiB (39.8% lower) | 10.93% relative WER |
 | Distil-dec16, long chunks | CTranslate2 | 120 s | — | 1 | 2,281.86 s (73.4% faster) | 3,639 MiB (64.0% lower) | 48.23% relative WER |
