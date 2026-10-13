@@ -6,10 +6,12 @@ type ModelConfig = { label: string; model: string; ct2_model: string | null; bac
 type JobConfig = { language: string; device_preference: string; model_config: ModelConfig; legacy?: boolean };
 type Job = { id: string; name: string; size: number; status: string; progress: number; duration: number | null; processed: number; error: string | null; profile: string | null; config: string | null; attempts: string | null; remote?: string | null };
 type Remote = { kernel: string; dataset: string; cleaned: boolean; cleanup_error?: string };
+type PendingCleanup = { id: string; name: string; owner?: string; errors: Record<string, string> };
 type Status = {
   kaggle: { installed: boolean; status: string; username: string | null; message: string; progress: number; error: string | null; download_bytes: number };
   components: { gpu: { compatible: boolean; status: string; reason: string; download_bytes: number }; paused: boolean; setup_error?: string; tasks: { id: string; label: string; status: string; progress: number; message: string; error: string | null }[] };
-  queue: { state: string; active_id: string | null; jobs: Job[] };
+  queue: { state: string; active_id: string | null; jobs: Job[]; cleanup_pending: PendingCleanup[] };
+  kaggle_gpu: { status: string; username: string | null; message: string; quota: { used: string; remaining: string; total: string; refreshAt?: string } | null };
   model: { status: string; progress: number; message: string; error: string | null; download_bytes: number };
   runtime: { status: string; profile: Profile | null; message: string; attempts: { error: string }[] };
   languages: (ModelConfig & { language: string })[];
@@ -111,8 +113,8 @@ function UserGuide({ onClose }: { onClose: () => void }) {
         <p>Chep will be able to run transcription directly on your device when the required components are installed.</p>
         <h4>Online GPU (Kaggle — Recommended)</h4>
         <p>Online GPU is a convenient option that allows you to use Kaggle's free GPU resources without requiring powerful local hardware.</p>
-        <ol><li>Click <strong>Download Kaggle CLI</strong>.</li><li>Create a Kaggle account or sign in to your existing account.</li><li>Click <strong>Authenticate Kaggle CLI</strong> and approve the authorization request.</li></ol>
-        <p>Once authenticated, you can start transcribing without downloading language models or CUDA components to your computer.</p>
+        <ol><li>Click <strong>Download Kaggle CLI</strong>.</li><li>Create a Kaggle account or sign in to your existing account.</li><li>Click <strong>Authenticate Kaggle CLI</strong> and approve the authorization request.</li><li>Click <strong>Check GPU condition</strong> and verify your phone number to access GPU.</li></ol>
+        <p>Once finished, you can start transcribing without downloading language models or CUDA components to your computer.</p>
         <p><strong>Note:</strong> Online GPU processing requires an internet connection. Your audio files will be uploaded to your private Kaggle account for processing and deleted after.</p>
       </section>
       <section><h3>3. Important Notes</h3>
@@ -131,6 +133,7 @@ export default function App() {
   const [sessionConnected, setSessionConnected] = useState(false);
   const [status, setStatus] = useState<Status | null>(null);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [connectionError, setConnectionError] = useState('');
   const [busy, setBusy] = useState(false);
   const [selectionPending, setSelectionPending] = useState(false);
@@ -196,11 +199,15 @@ export default function App() {
     finally { setBusy(false); }
   };
   const action = async (path: string, method = 'POST', body?: object) => {
-    setBusy(true); setError('');
+    setBusy(true); setError(''); setNotice('');
     const selectionChange = path === '/settings';
     if (selectionChange) { epoch.current++; setSelectionPending(true); }
     try {
-      await request(path, { method, ...(body ? { body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } } : {}) });
+      const response = await request(path, { method, ...(body ? { body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } } : {}) });
+      if (method === 'DELETE' || path.endsWith('/cleanup')) {
+        const result = await response.json();
+        setNotice(result.cleanup_pending ? 'Job removed from the queue. Resource cleanup is pending; use Retry cleanup below.' : method === 'DELETE' ? 'Job removal and cleanup completed.' : 'Kaggle cleanup completed.');
+      }
       // Invalidate status requests that began during the mutation too.
       epoch.current++;
       await refresh();
@@ -272,7 +279,8 @@ export default function App() {
     <div className="job-actions">
       {job.status === 'COMPLETED' && <><button className="text-button" onClick={() => setPreview(job)}>View</button><button className="small-button" onClick={() => void download(job, 'txt')}><ArrowDownToLine size={14}/>TXT</button><button className="small-button" onClick={() => void download(job, 'srt')}>SRT</button></>}
       {['FAILED', 'INTERRUPTED'].includes(job.status) && <button className="small-button" disabled={busy} onClick={() => void action(`/jobs/${job.id}/retry`)}><RefreshCw size={14}/>Retry</button>}
-      {(job.status === 'QUEUED' || ACTIVE.has(job.status)) && <button className="icon-button" aria-label={`Cancel ${job.name}`} disabled={busy || pausing} onClick={() => { if (!ACTIVE.has(job.status) || confirm('Cancel this file and pause the queue? Other queued files will be kept.')) void action(`/jobs/${job.id}/cancel`); }}><X size={18}/></button>}
+      {job.status === 'QUEUED' && <button className="icon-button" aria-label={`Remove ${job.name} from queue`} disabled={busy} onClick={() => void action(`/jobs/${job.id}`, 'DELETE')}><X size={18}/></button>}
+      {ACTIVE.has(job.status) && <button className="icon-button" aria-label={`Cancel ${job.name}`} disabled={busy || pausing} onClick={() => { if (confirm('Cancel this file and pause the queue? Other queued files will be kept.')) void action(`/jobs/${job.id}/cancel`); }}><X size={18}/></button>}
       {!ACTIVE.has(job.status) && job.status !== 'QUEUED' && <button className="icon-button" aria-label={`Delete ${job.name}`} disabled={busy || status?.queue.active_id === job.id} onClick={() => { if (confirm('Delete this record and its saved transcript? Your original file will be kept.')) void action(`/jobs/${job.id}`, 'DELETE'); }}><Trash2 size={16}/></button>}
     </div>
   </article>;
@@ -283,8 +291,7 @@ export default function App() {
     {departure === 'quit' && !serverStopped && <LoaderCircle className="spin"/>}
   </main>;
   return <div className="app-shell">
-    <aside className="sidebar"><a className="brand" href="#" onClick={e => { e.preventDefault(); setTab('workspace'); }}><span className="brand-mark"><AudioLines size={25}/></span><span><strong>Chep</strong></span><small className="brand-version">v{status?.version || '0.6.1'}</small></a>
-      <div className="edition">Multilingual Transcription</div>
+    <aside className="sidebar"><a className="brand" href="#" onClick={e => { e.preventDefault(); setTab('workspace'); }}><span className="brand-mark"><AudioLines size={25}/></span><span><strong>Chep</strong></span><small className="brand-version">v{status?.version || '0.6.2'}</small></a>
       <nav aria-label="Main navigation"><button className={tab === 'workspace' ? 'selected' : ''} onClick={() => setTab('workspace')}><AudioLines size={19}/>Transcribe<span>{queued}</span></button><button className={tab === 'history' ? 'selected' : ''} onClick={() => setTab('history')}><History size={19}/>History<span>{completed}</span></button></nav>
       <section className="storage-card kaggle-account" aria-label="Kaggle CLI Connection">
         <div className="card-kicker"><ShieldCheck size={17}/>KAGGLE CONNECTION</div>
@@ -293,17 +300,25 @@ export default function App() {
           if (!status?.kaggle.installed) setError('Download Kaggle CLI below, then choose Authenticate Kaggle CLI.');
           else void action('/kaggle/login');
         }}><ArrowRight size={16}/>Authenticate Kaggle CLI</button>
+        {status?.kaggle.status === 'ready' && <>
+          <button className="text-button" disabled={busy || ['checking', 'ready'].includes(status.kaggle_gpu.status)} onClick={() => void action('/kaggle/gpu/check')}><Cpu size={16}/>Check GPU condition</button>
+          {status.kaggle_gpu.status === 'checking' && <p role="status">{status.kaggle_gpu.message}</p>}
+          {status.kaggle_gpu.status === 'ready' && status.kaggle_gpu.quota && <div className="kaggle-quota" role="status"><span>YOUR KAGGLE QUOTA</span><strong>GPU: {status.kaggle_gpu.quota.remaining} available of {status.kaggle_gpu.quota.total}</strong></div>}
+          {status.kaggle_gpu.status === 'verification_required' && <p role="alert">{status.kaggle_gpu.message}<a href="https://www.kaggle.com/settings" target="_blank" rel="noreferrer">Kaggle Setting</a>.</p>}
+          {['error', 'quota_exhausted', 'cleanup_pending'].includes(status.kaggle_gpu.status) && <p role="alert">{status.kaggle_gpu.message}</p>}
+        </>}
         {!status?.kaggle.installed && <button className="text-button" disabled={!status || busy || kaggleWorking} onClick={() => void action('/kaggle/download')}><ArrowDownToLine size={15}/>Download Kaggle CLI ({bytes(status?.kaggle.download_bytes || 0)})</button>}
         {kaggleWorking && <p role="status">{status?.kaggle.message}</p>}
         {status?.kaggle.error && <p className="job-error" role="alert">{status.kaggle.error}</p>}
         <a href="https://www.kaggle.com/account/login" target="_blank" rel="noreferrer">Create/Sign in an account</a>
       </section>
       <section className="storage-card sidebar-storage"><div className="card-kicker"><HardDrive size={17}/>LOCAL STORAGE</div><strong>{status ? bytes(status.free_bytes) : '--'} <small>available</small></strong><p className="folder-path" title={status?.data_dir}>{status?.data_dir || 'Reading data folder...'}</p><button className="text-button" onClick={() => void action('/storage/open')} disabled={!status}><FolderOpen size={15}/>Open data folder</button></section>
-      <button className="sidebar-close" onClick={() => setExitOpen(true)} disabled={busy || Boolean(upload)}><X size={16}/>Close Chep</button>
     </aside>
-    <div className="main-shell"><header className="topbar"><div><span>Workspace</span><ChevronRight size={14}/><strong>{tab === 'workspace' ? 'Transcribe' : 'History'}</strong></div><button className="small-button guide-trigger" aria-haspopup="dialog" aria-expanded={guideOpen} aria-controls={guideOpen ? 'user-guide' : undefined} onClick={() => setGuideOpen(true)}>User Guide</button></header>
-      <main className="content"><div className="page-heading"><div>{tab === 'history' && <h1>Your completed recordings.</h1>}<p>{tab === 'workspace' ? 'Transcribe in five languages, locally or with Kaggle GPU.' : 'Read your transcripts or download TXT and SRT files.'}</p></div></div>
+    <div className="main-shell"><header className="topbar"><div><span>Workspace</span><ChevronRight size={14}/><strong>{tab === 'workspace' ? 'Transcribe' : 'History'}</strong></div><div className="topbar-actions"><button className="small-button guide-trigger" aria-haspopup="dialog" aria-expanded={guideOpen} aria-controls={guideOpen ? 'user-guide' : undefined} onClick={() => setGuideOpen(true)}>User Guide</button><button className="small-button topbar-close" onClick={() => setExitOpen(true)} disabled={busy || Boolean(upload)}><X size={16}/>Close Chep</button></div></header>
+      <main className="content">
         {(error || connectionError) && <div className="error-banner" role="alert">{error || connectionError}<button className="icon-button" onClick={() => setError('')} aria-label="Dismiss message"><X size={16}/></button></div>}
+        {notice && <div className="success-banner" role="status">{notice}<button className="icon-button" onClick={() => setNotice('')} aria-label="Dismiss message"><X size={16}/></button></div>}
+        {status?.queue.cleanup_pending.map(job => <div className="cleanup-banner" key={job.id}><span>{job.name}: cleanup pending{job.owner ? ` in ${job.owner}'s Kaggle account` : ''}. {Object.values(job.errors).join(' ') || 'Retry to finish removing resources.'}</span><button className="small-button" disabled={busy} onClick={() => void action(`/jobs/${job.id}/cleanup`)}>Retry cleanup</button></div>)}
         {!sessionConnected && status && <p className="session-warning" role="status">Close detection is reconnecting. Use Close Chep to choose whether to quit or run in background.</p>}
         {!status && !connectionError && <div className="loading-state"><LoaderCircle className="spin"/>Connecting to the application...</div>}
         {tab === 'workspace' && <div className="workspace-grid"><div className="primary-column">
@@ -315,7 +330,6 @@ export default function App() {
             {currentJobs.length ? <div className="job-list">{currentJobs.map(renderJob)}</div> : <div className="empty-state"><FileAudio size={29}/><h3>No files in the queue</h3><p>Add a recording to start transcribing.</p></div>}
           </section>
           {completed > 0 && <button className="history-link" onClick={() => setTab('history')}><CheckCircle2 size={18}/>{completed} completed transcript{completed !== 1 ? 's' : ''}<span>View history <ArrowRight size={16}/></span></button>}
-          <p className="privacy-note"><ShieldCheck size={15}/>Your original files are kept. Close Chep to choose whether to quit or run in background.</p>
         </div><aside className="details-column">
           <section className="engine-card"><div className="card-kicker"><Cpu size={17}/>PROCESSING DEVICE</div>
             <label className="field-label" htmlFor="device">Processing device</label><select id="device" value={status?.settings.device || 'auto'} disabled={locked} onChange={e => void action('/settings', 'PUT', { device: e.target.value })}><option value="auto">Local GPU (if CUDA available)</option><option value="kaggle">Online GPU (Kaggle, free)</option><option value="cpu">CPU only</option></select>

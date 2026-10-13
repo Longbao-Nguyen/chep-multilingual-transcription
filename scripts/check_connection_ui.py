@@ -56,7 +56,8 @@ try:
         card.get_by_text('test-user', exact=True).wait_for()
         assert button.is_disabled() and requests == ['login']
         assert page.get_by_role('button', name='Check connection').count() == 0
-        assert page.get_by_text('Multilingual Transcription', exact=True).count() == 1
+        assert page.get_by_text('Multilingual Transcription', exact=True).count() == 0
+        assert page.locator('.topbar').get_by_role('button', name='Close Chep', exact=True).count() == 1
         assert page.get_by_text('From sound to words.', exact=True).count() == 0
         assert page.get_by_text('YOUR VOICE, SIMPLY WRITTEN', exact=True).count() == 0
         for language in ['fr', 'en', 'es', 'de', 'vi']:

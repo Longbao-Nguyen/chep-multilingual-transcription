@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import shutil
@@ -18,6 +19,38 @@ from .kaggle_notebook import notebook
 
 REMOTE_ACTIVE = ('UPLOADING', 'WAITING_GPU', 'REMOTE_RUNNING', 'DOWNLOADING')
 MAX_REMOTE_BYTES = 2 * 1024**3
+log = logging.getLogger(__name__)
+
+
+def cleanup_response(output, kind, ref):
+    """Classify a failed deletion without accepting unrelated failures as 404s."""
+    lower = output.lower()
+    if re.search(r'\b(401|403|429|5\d\d)\b', lower):
+        return 'error'
+    if re.search(r'\b404\b', lower):
+        return 'missing'
+    label = 'notebook' if kind == 'kernels' else 'dataset'
+    if 'not found' in lower and (label in lower or kind[:-1] in lower or ref.lower() in lower):
+        return 'missing'
+    return 'error'
+
+
+class CleanupError(ValueError):
+    def __init__(self, kind, message):
+        super().__init__(message)
+        self.kind = kind
+
+
+def cleanup_failure(output):
+    if re.search(r'\b401\b|unauthenticated', output, re.I):
+        return CleanupError('authentication', 'Kaggle authentication expired. Reauthenticate the CLI and retry cleanup.')
+    if re.search(r'\b403\b|forbidden|permission denied', output, re.I):
+        return CleanupError('permission', 'Kaggle denied deletion. Check the signed-in account and retry cleanup.')
+    if re.search(r'\b429\b|too many requests|rate limit', output, re.I):
+        return CleanupError('rate_limit', 'Kaggle is rate limiting requests. Retry cleanup later.')
+    if re.search(r'\b5\d\d\b', output):
+        return CleanupError('server', 'Kaggle server error. Retry cleanup later.')
+    return CleanupError('unexpected', 'Kaggle could not remove this resource. Check your account and retry cleanup.')
 
 
 def kernel_status(output):
@@ -59,26 +92,34 @@ class KaggleBackend:
         self.store.update(job_id, remote=json.dumps(remote))
 
     def cleanup(self, job_id):
-        job = self.store.get(job_id)
+        job = self.store.get(job_id, include_removed=True)
+        if not job:
+            return
         remote = json.loads(job.get('remote') or '{}')
         if not remote or remote.get('cleaned'):
             return
-        if self.cli.identity() != remote['owner']:
-            raise ValueError('Sign in as ' + remote['owner'] + ' to remove this remote session.')
         try:
+            pending = [key for key in ('kernel', 'dataset') if remote.get(key + '_attempted') and not remote.get(key + '_cleaned')]
+            if pending and self.cli.identity() != remote['owner']:
+                raise CleanupError('authentication', 'Sign in as ' + remote['owner'] + ' to remove this remote session.')
             # Delete only resources recorded for this job, never enumerate/delete user resources.
             for kind, key in (('kernels', 'kernel'), ('datasets', 'dataset')):
-                if not remote.get(key + '_attempted'):
+                if key not in pending:
                     continue
                 ref = remote[key]
                 if not re.fullmatch(re.escape(remote['owner']) + r'/chep-(?:run|input)-[a-f0-9]{24}', ref):
-                    raise ValueError('Invalid Chep remote resource identifier.')
+                    raise CleanupError('metadata', 'Invalid Chep remote resource identifier. Cleanup requires the original resource IDs.')
                 output, code = self.cli.run([kind, 'delete', ref, '-y'], check=False)
-                if code and '404' not in output and 'not found' not in output.lower():
-                    raise RuntimeError('Could not remove all Kaggle files. Open your Kaggle account or retry cleanup.')
-            remote.update(cleaned=True, cleanup_error=None)
+                if code and cleanup_response(output, kind, ref) != 'missing':
+                    raise cleanup_failure(output)
+                remote[key + '_cleaned'] = True
+                self.save(job_id, remote)
+                log.info('Kaggle %s cleanup complete for job %s (%s)', kind, job_id, 'missing' if code else 'deleted')
+            remote.update(cleaned=True, cleanup_error=None, cleanup_kind=None)
         except Exception as exc:
             remote['cleanup_error'] = str(exc)
+            remote['cleanup_kind'] = getattr(exc, 'kind', 'timeout' if 'timed out' in str(exc).lower() else 'local_cli' if isinstance(exc, OSError) else 'unexpected')
+            log.warning('Kaggle cleanup pending for job %s: %s', job_id, type(exc).__name__)
             raise
         finally:
             self.save(job_id, remote)

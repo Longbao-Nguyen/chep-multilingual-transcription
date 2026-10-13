@@ -12,10 +12,10 @@ Transcribe French, English, Spanish, German and Vietnamese on your computer or o
 - Optional Online GPU (Kaggle, free) uploads audio to your private Kaggle account. Sign-in, Internet and available Kaggle GPU quota are required.
 - Kaggle CLI downloads separately in the app; no Kaggle package or transcription model is bundled.
 - Use the desktop shortcut to open the interface in your browser.
-- Closing the last Chep tab asks: Quit completely or Run in background. Close Chep in the sidebar offers the same choices.
+- Closing the last Chep tab asks: Quit completely or Run in background. Close Chep in the top bar offers the same choices.
 - Quit saves your queue and stops local work. Background keeps processing. Already submitted Kaggle notebooks may continue remotely.
 - Stop Chep in the Start Menu also shuts down the local application.
 - If the Microsoft Visual C++ runtime is missing, Windows may ask for administrator approval to install it.
 - GPU mode requires supported hardware and a compatible driver. Ineligible machines continue on CPU.
 
-This is version 0.6.0. Existing transcripts and history are preserved when using the same data folder. Upgrades remove previously bundled GPU and conversion libraries from the application folder.
+This is version 0.6.2. Existing transcripts and history are preserved when using the same data folder. Upgrades remove previously bundled GPU and conversion libraries from the application folder.

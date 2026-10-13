@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -16,23 +17,29 @@ from .store import ACTIVE, Store
 from .processes import WorkerJob
 from .components import Components
 from .kaggle_backend import KaggleBackend, MAX_REMOTE_BYTES
+from .kaggle_gpu import KaggleGpuCheck
 from .kaggle_cli import KaggleStopped
+
+log = logging.getLogger(__name__)
 
 
 class Engine:
     def __init__(self, store: Store, models):
         self.store, self.models = store, models
         self.lock = threading.RLock()
+        self.cleanup_lock = threading.RLock()
         self.state = "PAUSED"
         self.active = None
         self.process = None
         self.thread = None
+        self.cleanup_thread = None
         self.closing = False
         self.worker_job = WorkerJob()
         self.hardware = detect('cpu')
         self.components = Components(self.store.root, self.models, lambda: self.runtime.invalidate())
         self.runtime = RuntimeResolver(self.store.root, self.components)
         self.kaggle = KaggleBackend(self.store)
+        self.kaggle_gpu = KaggleGpuCheck(self.store.root, self.kaggle.cli)
         self.store.recover()
 
     def selected(self):
@@ -54,7 +61,29 @@ class Engine:
 
     def snapshot(self):
         with self.lock:
-            return {"state": self.state, "active_id": self.active, "jobs": self.store.list()}
+            pending = self.store.pending_cleanup()
+            def owner(job):
+                try:
+                    return json.loads(job['remote'] or '{}').get('owner')
+                except (TypeError, ValueError):
+                    return None
+            return {"state": self.state, "active_id": self.active, "jobs": self.store.list(),
+                    "cleanup_pending": [{"id": job['id'], "name": job['name'],
+                        "owner": owner(job),
+                        "errors": (json.loads(job['cleanup'] or '{}')).get('errors', {})}
+                        for job in pending]}
+
+    def start_cleanup_recovery(self):
+        def recover():
+            for job in self.store.pending_cleanup():
+                if self.closing:
+                    break
+                try:
+                    self.retry_cleanup(job['id'])
+                except Exception:
+                    log.exception('Deferred cleanup retry failed for job %s', job['id'])
+        self.cleanup_thread = threading.Thread(target=recover, daemon=True)
+        self.cleanup_thread.start()
 
     def start(self):
         with self.lock:
@@ -95,10 +124,16 @@ class Engine:
             if not job:
                 raise KeyError(job_id)
             if job["status"] == "QUEUED":
-                if job.get('remote'):
-                    self.kaggle.cleanup(job_id)
                 self.store.update(job_id, status="CANCELLED")
-                self._source(job_id).unlink(missing_ok=True)
+                try:
+                    self._source(job_id).unlink(missing_ok=True)
+                except OSError:
+                    log.exception('Source cleanup pending after cancellation of job %s', job_id)
+                if job.get('remote'):
+                    try:
+                        self.kaggle.cleanup(job_id)
+                    except Exception:
+                        log.exception('Kaggle cleanup pending after cancellation of job %s', job_id)
             elif self.active == job_id and job["status"] in ACTIVE:
                 self.state = "PAUSING"
                 self.store.update(job_id, status="CANCELLED")
@@ -119,16 +154,76 @@ class Engine:
     def delete(self, job_id):
         with self.lock:
             job = self.store.get(job_id)
-            if not job:
-                raise KeyError(job_id)
-            if self.active == job_id or job["status"] in ACTIVE:
-                raise ValueError("Cancel this file and wait for its worker to stop before deleting it.")
-            if job.get('remote'):
-                self.kaggle.cleanup(job_id)
-            self._source(job_id).unlink(missing_ok=True)
-            for ext in (".txt", ".srt", ".txt.part", ".srt.part"):
-                (self.store.root / "outputs" / job_id).with_suffix(ext).unlink(missing_ok=True)
+            if job:
+                if self.active == job_id or job["status"] in ACTIVE:
+                    raise ValueError("Cancel this file and wait for its worker to stop before deleting it.")
+                self.store.mark_removed(job_id)
+        return self._cleanup_removed(job_id)
+
+    def _cleanup_result(self, job_id):
+        job = self.store.get(job_id, include_removed=True)
+        if not job:
+            return {'removed': True, 'cleanup_pending': False}
+        if not job['removed']:
+            raise ValueError('This job has not been removed from the queue.')
+        cleanup = json.loads(job['cleanup'] or '{}')
+        return {'removed': True, 'cleanup_pending': not all(cleanup.get(key) for key in ('source', 'outputs', 'work', 'remote')),
+                'errors': cleanup.get('errors', {})}
+
+    def retry_cleanup(self, job_id):
+        return self._cleanup_removed(job_id)
+
+    def _cleanup_removed(self, job_id):
+        with self.cleanup_lock:
+            return self._cleanup_removed_locked(job_id)
+
+    def _cleanup_removed_locked(self, job_id):
+        job = self.store.get(job_id, include_removed=True)
+        if not job:
+            return {'removed': True, 'cleanup_pending': False}
+        if not job['removed']:
+            raise ValueError('Remove the job before retrying deferred cleanup.')
+        cleanup = json.loads(job['cleanup'])
+
+        def attempt(key, operation):
+            if cleanup[key]:
+                return
+            try:
+                operation()
+            except OSError as exc:
+                if key == 'remote':
+                    cleanup['errors'][key] = 'Kaggle cleanup could not start. Check the CLI installation and retry.'
+                    log.warning('Remote cleanup pending for job %s: %s', job_id, type(exc).__name__)
+                else:
+                    cleanup['errors'][key] = f'Local file cleanup failed ({type(exc).__name__}). Check data folder permissions and retry.'
+                    log.warning('Local %s cleanup pending for job %s: %s', key, job_id, type(exc).__name__)
+            except Exception as exc:
+                cleanup['errors'][key] = str(exc) if key == 'remote' else 'Cleanup failed. Retry or check the logs.'
+                log.exception('%s cleanup pending for job %s', key, job_id)
+            else:
+                cleanup[key] = True
+                cleanup['errors'].pop(key, None)
+            finally:
+                self.store.update(job_id, cleanup=json.dumps(cleanup))
+
+        attempt('source', lambda: self._source(job_id).unlink(missing_ok=True))
+        def remove_outputs():
+            for ext in ('.txt', '.srt', '.txt.part', '.srt.part'):
+                (self.store.root / 'outputs' / job_id).with_suffix(ext).unlink(missing_ok=True)
+        attempt('outputs', remove_outputs)
+        def remove_work():
+            work = self.store.root / 'work' / job_id
+            if work.is_symlink():
+                work.unlink(missing_ok=True)
+            elif work.exists():
+                shutil.rmtree(work)
+        attempt('work', remove_work)
+        attempt('remote', lambda: self.kaggle.cleanup(job_id))
+        result = self._cleanup_result(job_id)
+        if not result['cleanup_pending']:
             self.store.delete(job_id)
+            log.info('Removed job %s and completed resource cleanup', job_id)
+        return result
 
     def _source(self, job_id):
         return self.store.root / "sources" / job_id
@@ -281,6 +376,9 @@ class Engine:
         self.components.close()
         if self.thread:
             self.thread.join(timeout=15)
+        self.kaggle_gpu.close()
         self.kaggle.cli.close()
+        if self.cleanup_thread:
+            self.cleanup_thread.join(timeout=5)
         self.store.recover()
         self.worker_job.close()

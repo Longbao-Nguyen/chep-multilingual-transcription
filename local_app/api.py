@@ -62,6 +62,7 @@ def create_app(data_dir: Path, token: str, model_dir: Path | None = None):
     @asynccontextmanager
     async def lifespan(app):
         engine.components.start()
+        engine.start_cleanup_recovery()
         yield
         lifecycle.close()
         await asyncio.to_thread(close_resources)
@@ -135,7 +136,13 @@ def create_app(data_dir: Path, token: str, model_dir: Path | None = None):
         model, runtime = engine.configuration()
         return {"queue": engine.snapshot(), "model": model, "runtime": runtime, "languages": public_catalog(), "hardware": runtime.get('hardware', engine.hardware),
                 "settings": store.settings(), "data_dir": str(root), "free_bytes": shutil.disk_usage(root).free,
-                "version": "0.6.1", "components": engine.components.snapshot(), "kaggle": engine.kaggle.cli.snapshot()}
+                "version": "0.6.2", "components": engine.components.snapshot(), "kaggle": engine.kaggle.cli.snapshot(),
+                "kaggle_gpu": engine.kaggle_gpu.snapshot()}
+
+    @app.post('/api/kaggle/gpu/check')
+    def check_kaggle_gpu():
+        engine.kaggle_gpu.start()
+        return {'ok': True}
 
     @app.post('/api/kaggle/{action}')
     def kaggle_action(action: str):
@@ -148,9 +155,12 @@ def create_app(data_dir: Path, token: str, model_dir: Path | None = None):
     @app.post('/api/jobs/{job_id}/cleanup')
     def cleanup_kaggle(job_id: str):
         with engine.lock:
+            removed = store.get(job_id, include_removed=True)
+            if removed and removed['removed']:
+                return engine.retry_cleanup(job_id)
             job = store.get(job_id)
             if not job:
-                raise KeyError(job_id)
+                return {'removed': True, 'cleanup_pending': False}
             if engine.active == job_id or job['status'] not in ('COMPLETED', 'CANCELLED', 'FAILED'):
                 raise ValueError('Wait for the job to stop before removing its Kaggle files.')
             engine.kaggle.cleanup(job_id)
@@ -249,8 +259,7 @@ def create_app(data_dir: Path, token: str, model_dir: Path | None = None):
 
     @app.delete("/api/jobs/{job_id}")
     def delete(job_id: str):
-        engine.delete(job_id)
-        return {"ok": True}
+        return engine.delete(job_id)
 
     @app.get("/api/jobs/{job_id}/transcript")
     def transcript(job_id: str, format: str = "txt"):
