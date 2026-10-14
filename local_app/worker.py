@@ -42,6 +42,46 @@ def normalize(source: Path, target: Path):
     return count / 16000
 
 
+def decoded_duration(source: Path) -> float:
+    """Count decoded 16 kHz samples so shard boundaries match the remote worker."""
+    import av
+    count = 0
+    with av.open(str(source)) as container:
+        if not container.streams.audio:
+            raise ValueError('This file has no audio stream.')
+        stream = container.streams.audio[0]
+        resampler = av.AudioResampler(format='s16', layout='mono', rate=16000)
+        for frame in container.decode(stream):
+            for converted in resampler.resample(frame):
+                count += converted.to_ndarray().size
+        for converted in resampler.resample(None):
+            count += converted.to_ndarray().size
+    if not count:
+        raise ValueError('The audio file is empty.')
+    return count / 16000
+
+
+def select_range(audio: Path, start: float, stop: float, source_duration: float) -> float:
+    """Keep a lossless sample-aligned range from the fully decoded WAV."""
+    if (not all(math.isfinite(value) for value in (start, stop, source_duration)) or
+            not 0 <= start < stop <= source_duration + .001):
+        raise ValueError('Invalid audio shard range.')
+    full = audio.with_name('full.wav')
+    audio.replace(full)
+    low, high = round(start * 16000), min(round(stop * 16000), round(source_duration * 16000))
+    with wave.open(str(full), 'rb') as original, wave.open(str(audio), 'wb') as selected:
+        selected.setparams(original.getparams())
+        original.setpos(low)
+        remaining = high - low
+        while remaining:
+            frames = original.readframes(min(remaining, 16000 * 60))
+            if not frames:
+                raise ValueError('Decoded audio ended before the shard range.')
+            selected.writeframesraw(frames)
+            remaining -= len(frames) // 2
+    return (high - low) / 16000
+
+
 def stamp(seconds: float, srt=False):
     millis = max(0, round(seconds * 1000))
     whole, ms = divmod(millis, 1000)
@@ -104,6 +144,11 @@ def run(spec):
     work = Path(spec["work"])
     audio = work / "audio.wav"
     duration = normalize(Path(spec["source"]), audio)
+    source_duration = duration
+    if spec.get('source_duration') is not None and abs(duration - spec['source_duration']) > .1:
+        raise ValueError('The decoded audio duration changed since shard planning.')
+    if spec.get('span') is not None:
+        duration = select_range(audio, *spec['span'], source_duration)
     emit("progress", status="TRANSCRIBING", progress=0.08, duration=duration)
 
     def infer(item):
@@ -113,6 +158,7 @@ def run(spec):
                 for s in segments if s.text.strip()]
 
     output = Path(spec["output"])
+    collected = [] if spec.get('include_segments') else None
     # Partial output never becomes a downloadable completed transcript.
     with (output.with_suffix(".txt.part")).open("w", encoding="utf-8") as text_file, \
          (output.with_suffix(".srt.part")).open("w", encoding="utf-8") as subtitle_file, \
@@ -131,6 +177,8 @@ def run(spec):
                 break
             for segments in pool.map(infer, batch):
                 for segment in segments:
+                    if collected is not None:
+                        collected.append(segment)
                     segment_index += 1
                     start, end, text = segment["start"], segment["end"], segment["text"]
                     text_file.write(f"[{stamp(start)} - {stamp(end)}] {text}\n")
@@ -142,7 +190,12 @@ def run(spec):
             stream.flush()
             os.fsync(stream.fileno())
     emit("progress", status="FINALIZING", progress=0.98)
-    emit("done", duration=duration)
+    if collected is not None:
+        with output.with_suffix('.segments.json.part').open('w', encoding='utf-8') as stream:
+            json.dump(collected, stream, ensure_ascii=False)
+            stream.flush()
+            os.fsync(stream.fileno())
+    emit("done", duration=duration, source_duration=source_duration)
 
 
 if __name__ == "__main__":

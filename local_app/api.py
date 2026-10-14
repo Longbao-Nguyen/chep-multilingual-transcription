@@ -136,7 +136,7 @@ def create_app(data_dir: Path, token: str, model_dir: Path | None = None):
         model, runtime = engine.configuration()
         return {"queue": engine.snapshot(), "model": model, "runtime": runtime, "languages": public_catalog(), "hardware": runtime.get('hardware', engine.hardware),
                 "settings": store.settings(), "data_dir": str(root), "free_bytes": shutil.disk_usage(root).free,
-                "version": "0.6.2", "components": engine.components.snapshot(), "kaggle": engine.kaggle.cli.snapshot(),
+                "version": "0.7.0", "components": engine.components.snapshot(), "kaggle": engine.kaggle.cli.snapshot(),
                 "kaggle_gpu": engine.kaggle_gpu.snapshot()}
 
     @app.post('/api/kaggle/gpu/check')

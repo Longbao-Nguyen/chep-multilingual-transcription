@@ -103,6 +103,8 @@ def test_kernel_metadata_code_is_private_input_and_pinned_model():
     assert 'nunu-willump/distil-large-v3.5-ct2' in code
     assert 'source_sha256' in code
     assert 'T4' in code
+    assert 'snapshot_download' not in code
+    assert 'Pinned public model Dataset' in code
     assert 'auth' not in code.lower()
 
 
@@ -209,7 +211,8 @@ def test_resume_does_not_upload_or_push_again(tmp_path):
             directory = Path(args[args.index('-p')+1])
             result = result_files(directory)
             result.update(duration=1)
-            result['profile'].update(language='en', revision=config['model_config']['revision'])
+            result['profile'].update(language='en', revision=config['model_config']['revision'],
+                                     **config['model_config']['sweet_spot'])
             (directory/'result.json').write_text(json.dumps(result))
         return '', 0
     backend.cli.run = run

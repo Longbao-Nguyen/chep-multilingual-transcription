@@ -54,7 +54,7 @@ class Engine:
                 if self.kaggle.cli.installed and self.kaggle.cli.snapshot()['status'] == 'idle':
                     self.kaggle.cli.action('check')
                 return manager.snapshot(), {'status': 'online', 'profile': None, 'attempts': [],
-                    'message': 'The selected model will download on Kaggle. No local model or GPU runtime is required.'}
+                    'message': 'Kaggle will attach the public model Dataset. No local model or GPU runtime is required.'}
             if self.state == 'PAUSED' and not self.closing:
                 self.runtime.ensure(selected, manager)
             return manager.snapshot(), self.runtime.snapshot()

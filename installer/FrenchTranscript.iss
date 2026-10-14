@@ -1,4 +1,4 @@
-#define AppVersion "0.6.2"
+#define AppVersion "0.7.0"
 #include "component-sizes.iss"
 
 [Setup]

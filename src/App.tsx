@@ -291,7 +291,7 @@ export default function App() {
     {departure === 'quit' && !serverStopped && <LoaderCircle className="spin"/>}
   </main>;
   return <div className="app-shell">
-    <aside className="sidebar"><a className="brand" href="#" onClick={e => { e.preventDefault(); setTab('workspace'); }}><span className="brand-mark"><AudioLines size={25}/></span><span><strong>Chep</strong></span><small className="brand-version">v{status?.version || '0.6.2'}</small></a>
+    <aside className="sidebar"><a className="brand" href="#" onClick={e => { e.preventDefault(); setTab('workspace'); }}><span className="brand-mark"><AudioLines size={25}/></span><span><strong>Chep</strong></span><small className="brand-version">v{status?.version || '0.7.0'}</small></a>
       <nav aria-label="Main navigation"><button className={tab === 'workspace' ? 'selected' : ''} onClick={() => setTab('workspace')}><AudioLines size={19}/>Transcribe<span>{queued}</span></button><button className={tab === 'history' ? 'selected' : ''} onClick={() => setTab('history')}><History size={19}/>History<span>{completed}</span></button></nav>
       <section className="storage-card kaggle-account" aria-label="Kaggle CLI Connection">
         <div className="card-kicker"><ShieldCheck size={17}/>KAGGLE CONNECTION</div>

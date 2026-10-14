@@ -141,7 +141,7 @@ def main():
         shutil.rmtree(app)
         assert not app.exists()
         checks.append('entire test application folder deleted successfully after Quit; data folder retained')
-        report={'version':'0.6.2','checks':checks,'scope':'Isolated profile on development Windows, not a separate clean Windows VM.'}
+        report={'version':'0.7.0','checks':checks,'scope':'Isolated profile on development Windows, not a separate clean Windows VM.'}
         (ROOT/'docs/evidence/v06-packaged-exit.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
         print(json.dumps(report),flush=True)
     finally:

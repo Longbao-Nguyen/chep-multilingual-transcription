@@ -10,7 +10,8 @@ __pycache__/
 test-results/
 data/
 benchmarks/
-docs/
+docs/*
+!docs/kaggle-optimization-benchmarks.md
 
 # Private coding-agent reference; never force-add or publish.
 /PROJECT_SPEC.md

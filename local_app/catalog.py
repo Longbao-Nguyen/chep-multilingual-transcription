@@ -1,6 +1,7 @@
 """Versioned model policy. All model-specific settings live in JSON."""
 from copy import deepcopy
 import json
+import re
 from .config import ROOT
 
 CATALOG_PATH = ROOT / 'config' / 'transcription_models.json'
@@ -19,6 +20,8 @@ def load_catalog(path=CATALOG_PATH):
         for name, meta in cfg['files'].items():
             if '/' in name or '\\' in name or name in ('.', '..') or meta['size'] <= 0 or len(meta['sha256']) != 64:
                 raise ValueError(f'Invalid artifact manifest: {language}')
+        if not re.fullmatch(r'[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+/[1-9][0-9]*', cfg.get('kaggle_dataset', '')):
+            raise ValueError(f'Invalid public Kaggle model Dataset: {language}')
     return data['languages']
 
 LANGUAGES = load_catalog()
@@ -40,15 +43,19 @@ def resolve_artifact(language, config):
                 result.get('model') == current['model'] and
                 {n:(m['size'],m['sha256']) for n,m in result['files'].items()} ==
                 {n:(m['size'],m['sha256']) for n,m in current['files'].items()}):
-            for key in ('files','revision','ct2_model','legacy_ct2_revisions'):
+            for key in ('files','revision','ct2_model','legacy_ct2_revisions','kaggle_dataset'):
                 result[key] = deepcopy(current[key])
+        if (result.get('revision') == current['revision'] and
+                {n:(m['size'],m['sha256']) for n,m in result['files'].items()} ==
+                {n:(m['size'],m['sha256']) for n,m in current['files'].items()}):
+            result['kaggle_dataset'] = current['kaggle_dataset']
         return result
     if (current.get('requires_conversion') or not current.get('ct2_model') or
             result.get('model') != current['model'] or
             result.get('source_revision', result['revision']) != current.get('source_revision') or
             result['revision'] not in current.get('legacy_ct2_revisions', [])):
         raise ValueError('This legacy model needs a compatible preconverted release. Update the application.')
-    for key in ('files', 'revision', 'ct2_model', 'requires_conversion', 'legacy_ct2_revisions'):
+    for key in ('files', 'revision', 'ct2_model', 'requires_conversion', 'legacy_ct2_revisions', 'kaggle_dataset'):
         result[key] = deepcopy(current[key])
     return result
 

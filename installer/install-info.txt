@@ -18,4 +18,4 @@ Transcribe French, English, Spanish, German and Vietnamese on your computer or o
 - If the Microsoft Visual C++ runtime is missing, Windows may ask for administrator approval to install it.
 - GPU mode requires supported hardware and a compatible driver. Ineligible machines continue on CPU.
 
-This is version 0.6.2. Existing transcripts and history are preserved when using the same data folder. Upgrades remove previously bundled GPU and conversion libraries from the application folder.
+This is version 0.7.0. Existing transcripts and history are preserved when using the same data folder. Upgrades remove previously bundled GPU and conversion libraries from the application folder.
