@@ -88,7 +88,7 @@ Available long-form CT2 measurements use the same nine private recordings totali
 | Distil-dec16, shorter concurrent chunks | CTranslate2 | 40 s | — | 2 | 2,644.62 s (69.2% faster) | 3,807 MiB (62.3% lower) | 12.91% relative WER |
 | Distil-dec16, shorter concurrent chunks, split on 2 GPU (Notebook) | CTranslate2 | 40 s | — | 2 | 1,977.59 s (76.98% faster) | 3,807 MiB each | 12.91% relative WER |
 
-**The fastest configuration was not the preferred one:** the 120-second CT2 pipeline showed substantially higher disagreement with the full PyTorch baseline (48.23% relative WER). The selected 40-second, two-worker configuration achieved **69.2% faster inference and 62.3% lower peak VRAM**, with 12.91% relative WER. Increasing concurrency from two to four workers improved speed by only 0.19% while consuming more VRAM. Relative WER does not represent accuracy against human-verified ground truth, and timing variability was not measured.
+**The fastest configuration (1 notebook) was not the preferred one:** the 120-second CT2 pipeline showed substantially higher disagreement with the full PyTorch baseline (48.23% relative WER). The selected 40-second, two-worker configuration achieved **69.2% faster inference and 62.3% lower peak VRAM**, with 12.91% relative WER. Increasing concurrency from two to four workers improved speed by only 0.19% while consuming more VRAM. For audio files of 21 minutes or longer, processing can be accelerated by running two Kaggle notebooks in parallel. Relative WER does not represent accuracy against human-verified ground truth, and timing variability was not measured.
 
 Quantization also needs quality checks: Vietnamese INT8 reached 18.00% WER versus 9.33% FP16 on its pilot, so that quantized profile is excluded.
 
