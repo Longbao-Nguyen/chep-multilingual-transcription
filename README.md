@@ -23,7 +23,7 @@ The work progressed from French Whisper experiments to distilled models running 
 
 Requires **Windows 10 or later, x64**. Python, Conda and Docker are not required.
 
-1. Obtain `Chep-Setup-0.6.2-win-x64.exe` from the maintainer. The local build is in `release/`; a public download URL has not yet been established.
+1. Obtain `Chep-Setup-0.7.0-win-x64.exe` from the maintainer. The local build is in `release/`; a public download URL has not yet been established.
 2. Run Setup and choose application and data folders. Optional component selections are downloaded by the app after installation.
 3. Open **Chep** and start using.
 
@@ -45,7 +45,7 @@ For tests, install `requirements-dev.txt` and run `python -m pytest -q` using th
 .\.venv\Scripts\python.exe scripts/build_windows.py --iscc 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 ```
 
-Output: `release/Chep-Setup-0.6.2-win-x64.exe`.
+Output: `release/Chep-Setup-0.7.0-win-x64.exe`.
 
 ## Usage
 
