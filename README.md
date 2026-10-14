@@ -13,6 +13,7 @@ The work progressed from French Whisper experiments to distilled models running 
 - **Five languages:** French, English, Spanish, German and Vietnamese, each with a pinned model and its own execution policy.
 - **Your choice of compute:** local NVIDIA CUDA GPU, CPU, or your own Kaggle GPU account. No Chep subscription or paid inference API; Kaggle quotas and availability apply.
 - **Local privacy:** local modes keep recordings and transcripts on your computer and work offline after asset setup. Online mode uploads audio to private Kaggle resources and attempts cleanup after verified results return.
+- **Kaggle model attachment:** online notebooks attach versioned public model Datasets owned by `longnj`; each signed-in user's recording remains in a private Dataset under that user's own account. For audio shorter than 21 minutes Chep uses one notebook; from 21 minutes it uses two notebooks with 5 seconds of shared audio and a conservative seam merge. Actual GPU access still depends on the user's Kaggle account and quota.
 - **Measured execution profiles:** precision and concurrent chunk workers selected from benchmark evidence, with local compatibility probes and CPU fallback.
 - **Persistent workflow:** sequential file queue, per-file cancellation, interruption/retry, History and TXT/SRT export.
 
@@ -85,6 +86,7 @@ Available long-form CT2 measurements use the same nine private recordings totali
 | Distil-dec16, baseline | PyTorch | 120 s | 4 | — | 5,570.73 s (35.2% faster) | 6,085 MiB (39.8% lower) | 10.93% relative WER |
 | Distil-dec16, long chunks | CTranslate2 | 120 s | — | 1 | 2,281.86 s (73.4% faster) | 3,639 MiB (64.0% lower) | 48.23% relative WER |
 | Distil-dec16, shorter concurrent chunks | CTranslate2 | 40 s | — | 2 | 2,644.62 s (69.2% faster) | 3,807 MiB (62.3% lower) | 12.91% relative WER |
+| Distil-dec16, shorter concurrent chunks, split on 2 GPU (Notebook) | CTranslate2 | 40 s | — | 2 | 1,977.59 s (76.98% faster) | 3,807 MiB each | 12.91% relative WER |
 
 **The fastest configuration was not the preferred one:** the 120-second CT2 pipeline showed substantially higher disagreement with the full PyTorch baseline (48.23% relative WER). The selected 40-second, two-worker configuration achieved **69.2% faster inference and 62.3% lower peak VRAM**, with 12.91% relative WER. Increasing concurrency from two to four workers improved speed by only 0.19% while consuming more VRAM. Relative WER does not represent accuracy against human-verified ground truth, and timing variability was not measured.
 
