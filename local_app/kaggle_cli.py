@@ -23,6 +23,65 @@ class KaggleStopped(Exception):
     pass
 
 
+class FirstLogMonitor:
+    """Read the first notebook log line from Kaggle's live --follow stream."""
+    def __init__(self, cli, ref):
+        self.cli = cli
+        self.ref = ref
+        self.seen = threading.Event()
+        self.stop = threading.Event()
+        self.started_at = time.time()
+        self.first_log_at = None
+        self.process = None
+        self.lock = threading.Lock()
+        self.thread = threading.Thread(target=self._read, daemon=True)
+        self.thread.start()
+
+    def _read(self):
+        env = {**os.environ, 'PYTHONIOENCODING': 'utf-8', 'PYTHONUTF8': '1',
+               'PYTHONUNBUFFERED': '1'}
+        while not self.stop.is_set() and not self.seen.is_set():
+            try:
+                process = subprocess.Popen(self.cli.command(['kernels', 'logs', self.ref, '--follow']),
+                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+                    encoding='utf-8', errors='replace', env=env, creationflags=FLAGS)
+                with self.lock:
+                    self.process = process
+                try:
+                    for line in process.stdout:
+                        if self.stop.is_set():
+                            break
+                        if line.strip():
+                            self.first_log_at = time.time()
+                            self.seen.set()
+                            break
+                finally:
+                    if process.poll() is None:
+                        try:
+                            process.kill()
+                        except OSError:
+                            pass
+                    process.communicate()
+                    with self.lock:
+                        if self.process is process:
+                            self.process = None
+            except OSError:
+                pass  # A transient stream failure is retried until stopped or a log arrives.
+            if not self.seen.is_set():
+                self.stop.wait(2)
+
+    def close(self):
+        self.stop.set()
+        with self.lock:
+            process = self.process
+        if process and process.poll() is None:
+            try:
+                process.kill()
+            except OSError:
+                pass
+        self.thread.join(timeout=3)
+
+
 def safe_error(output):
     """Auth command output can contain OAuth URLs. Never expose it in logs/UI."""
     text = output.lower()
@@ -78,6 +137,9 @@ class KaggleCLI:
 
     def run(self, args, timeout=120, stopped=None, check=True):
         return self._run_command(self.command(args), timeout, stopped, check)
+
+    def watch_first_log(self, ref):
+        return FirstLogMonitor(self, ref)
 
     def _run_command(self, command, timeout=120, stopped=None, check=True):
         env = {**os.environ, 'PYTHONIOENCODING': 'utf-8', 'PYTHONUTF8': '1'}

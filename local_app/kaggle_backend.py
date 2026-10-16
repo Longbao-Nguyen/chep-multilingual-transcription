@@ -20,6 +20,9 @@ from .kaggle_notebook import notebook
 
 REMOTE_ACTIVE = ('UPLOADING', 'WAITING_GPU', 'REMOTE_RUNNING', 'DOWNLOADING')
 MAX_REMOTE_BYTES = 2 * 1024**3
+FIRST_LOG_TIMEOUT_SECONDS = 120
+FIRST_LOG_RECONNECT_GRACE_SECONDS = 10
+MAX_FIRST_LOG_RETRIES = 2
 log = logging.getLogger(__name__)
 
 
@@ -44,19 +47,26 @@ class CleanupError(ValueError):
 
 def cleanup_failure(output):
     if re.search(r'\b401\b|unauthenticated', output, re.I):
-        return CleanupError('authentication', 'Kaggle authentication expired. Reauthenticate the CLI and retry cleanup.')
+        return CleanupError('authentication', 'Kaggle authentication expired. Reauthenticate the CLI; Chep will retry cleanup automatically.')
     if re.search(r'\b403\b|forbidden|permission denied', output, re.I):
-        return CleanupError('permission', 'Kaggle denied deletion. Check the signed-in account and retry cleanup.')
+        return CleanupError('permission', 'Kaggle denied deletion. Check the signed-in account; Chep will retry cleanup automatically.')
     if re.search(r'\b429\b|too many requests|rate limit', output, re.I):
-        return CleanupError('rate_limit', 'Kaggle is rate limiting requests. Retry cleanup later.')
+        return CleanupError('rate_limit', 'Kaggle is rate limiting requests. Chep will retry cleanup automatically.')
     if re.search(r'\b5\d\d\b', output):
-        return CleanupError('server', 'Kaggle server error. Retry cleanup later.')
-    return CleanupError('unexpected', 'Kaggle could not remove this resource. Check your account and retry cleanup.')
+        return CleanupError('server', 'Kaggle server error. Chep will retry cleanup automatically.')
+    return CleanupError('unexpected', 'Kaggle could not remove this resource. Check your account; Chep will retry cleanup automatically.')
 
 
 def kernel_status(output):
     match = re.search(r'has status "(?:KernelWorkerStatus\.)?([A-Z_]+)"', output)
     return match.group(1) if match else None
+
+
+def silent_startup_overdue(running_since, monitor, now=None):
+    current = time.time() if now is None else now
+    return (not monitor.seen.is_set() and
+            current - running_since >= FIRST_LOG_TIMEOUT_SECONDS and
+            current - monitor.started_at >= FIRST_LOG_RECONNECT_GRACE_SECONDS)
 
 
 def sha(path):
@@ -114,6 +124,48 @@ class KaggleBackend:
     def save(self, job_id, remote):
         self.store.update(job_id, remote=json.dumps(remote))
 
+    def _restart_silent_kernel(self, job_id, remote, entry, folder, run, index=None):
+        """Replace only one RUNNING notebook after 120 seconds without a live log."""
+        if entry.get('startup_retries', 0) >= MAX_FIRST_LOG_RETRIES:
+            raise ValueError('A Kaggle notebook repeatedly started without returning logs. '
+                             'Automatic retries are exhausted; retry the job later.')
+        old_ref = entry['ref']
+        suffix = f'-{index}' if index is not None else ''
+        if not re.fullmatch(re.escape(remote['owner']) + r'/chep-run-[a-f0-9]{24}' +
+                            re.escape(suffix), old_ref):
+            raise CleanupError('metadata', 'Invalid Chep notebook ID; automatic restart was stopped.')
+        output, code = run(['kernels', 'delete', old_ref, '-y'], check=False)
+        if code and cleanup_response(output, 'kernels', old_ref) != 'missing':
+            raise cleanup_failure(output)
+        new_ref = remote['owner'] + '/chep-run-' + uuid.uuid4().hex[:24] + suffix
+        metadata_path = folder / 'kernel-metadata.json'
+        metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
+        metadata.update(id=new_ref, title=new_ref.split('/')[1])
+        atomic_json(metadata_path, metadata)
+        remote.setdefault('retired_kernels', []).append({
+            'ref': old_ref, 'attempted': True, 'cleaned': True})
+        remote.setdefault('startup_retry_history', []).append({
+            'old_ref': old_ref, 'new_ref': new_ref, 'part_index': index,
+            'running_since': entry.get('running_since'), 'restarted_at': time.time()})
+        entry.update(ref=new_ref, attempted=False, cleaned=False, submitted=False,
+                     complete=False, running_since=None, first_log_seen_at=None,
+                     startup_retries=entry.get('startup_retries', 0) + 1)
+        if index is None:
+            remote.update(kernel=new_ref, kernel_attempted=False, kernel_cleaned=False,
+                          running_since=None, first_log_seen_at=None,
+                          startup_retries=entry['startup_retries'], submitted_at=time.time())
+        self.save(job_id, remote)  # Persist the new owned ID before submission.
+        entry['attempted'] = True
+        if index is None:
+            remote['kernel_attempted'] = True
+        self.save(job_id, remote)
+        run(['kernels', 'push', '-p', str(folder), '--accelerator', 'NvidiaTeslaT4',
+             '-t', '14400'], timeout=180)
+        entry['submitted'] = True
+        self.save(job_id, remote)
+        log.warning('Restarted Kaggle notebook without a first log for job %s, shard %s',
+                    job_id, index if index is not None else 'single')
+
     def cleanup(self, job_id):
         job = self.store.get(job_id, include_removed=True)
         if not job:
@@ -122,9 +174,9 @@ class KaggleBackend:
         if not remote or remote.get('cleaned'):
             return
         try:
-            kernels = remote.get('kernels', []) if remote.get('dual') else [{
+            kernels = (remote.get('kernels', []) if remote.get('dual') else [{
                 'ref': remote.get('kernel'), 'attempted': remote.get('kernel_attempted'),
-                'cleaned': remote.get('kernel_cleaned')}]
+                'cleaned': remote.get('kernel_cleaned')}]) + remote.get('retired_kernels', [])
             pending_kernels = [entry for entry in kernels if entry.get('attempted') and not entry.get('cleaned')]
             pending_dataset = remote.get('dataset_attempted') and not remote.get('dataset_cleaned')
             if (pending_kernels or pending_dataset) and self.cli.identity() != remote['owner']:
@@ -140,7 +192,7 @@ class KaggleBackend:
                 if code and cleanup_response(output, 'kernels', ref) != 'missing':
                     raise cleanup_failure(output)
                 entry['cleaned'] = True
-                if not remote.get('dual'):
+                if not remote.get('dual') and ref == remote.get('kernel'):
                     remote['kernel_cleaned'] = True
                 self.save(job_id, remote)
                 log.info('Kaggle kernel cleanup complete for job %s (%s)', job_id, 'missing' if code else 'deleted')
@@ -307,29 +359,56 @@ class KaggleBackend:
             self.save(job_id, remote)
         stage('WAITING_GPU', .20)
         failures = 0
-        while True:
-            try:
-                output, _ = run(['kernels', 'status', remote['kernel']])
-                failures = 0
-            except RuntimeError:
-                failures += 1
-                if failures >= 5:
-                    raise
+        monitor = None
+        try:
+            while True:
+                try:
+                    output, _ = run(['kernels', 'status', remote['kernel']])
+                    failures = 0
+                except RuntimeError:
+                    failures += 1
+                    if failures >= 5:
+                        raise
+                    wait(10)
+                    continue
+                status = kernel_status(output)
+                if not status:
+                    raise ValueError('Kaggle returned an unknown session status. Retry to reconnect.')
+                if status == 'COMPLETE':
+                    break
+                if any(word in status for word in ('ERROR', 'CANCEL', 'FAILED')):
+                    remote['stage'] = 'failed'
+                    self.save(job_id, remote)
+                    raise ValueError('Kaggle stopped this notebook. Check the session in your Kaggle account and Retry.')
+                if status == 'RUNNING' and not remote.get('first_log_seen_at'):
+                    if not remote.get('running_since'):
+                        remote['running_since'] = time.time()
+                        self.save(job_id, remote)
+                    if monitor is None:
+                        monitor = self.cli.watch_first_log(remote['kernel'])
+                    if monitor.seen.is_set():
+                        remote['first_log_seen_at'] = monitor.first_log_at or time.time()
+                        self.save(job_id, remote)
+                        monitor.close()
+                        monitor = None
+                    elif silent_startup_overdue(remote['running_since'], monitor):
+                        monitor.close()
+                        monitor = None
+                        entry = {'ref': remote['kernel'], 'attempted': remote.get('kernel_attempted'),
+                                 'cleaned': remote.get('kernel_cleaned'),
+                                 'running_since': remote['running_since'],
+                                 'startup_retries': remote.get('startup_retries', 0)}
+                        self._restart_silent_kernel(job_id, remote, entry, kernel, run)
+                        stage('WAITING_GPU', .20)
+                        continue
+                stage('REMOTE_RUNNING' if status == 'RUNNING' else 'WAITING_GPU',
+                      .35 if status == 'RUNNING' else .20)
+                if time.time() - remote.get('submitted_at', time.time()) > 5 * 3600:
+                    raise ValueError('Kaggle session is taking longer than expected. Retry to reconnect.')
                 wait(10)
-                continue
-            status = kernel_status(output)
-            if not status:
-                raise ValueError('Kaggle returned an unknown session status. Retry to reconnect.')
-            if status == 'COMPLETE':
-                break
-            if any(word in status for word in ('ERROR', 'CANCEL', 'FAILED')):
-                remote['stage'] = 'failed'
-                self.save(job_id, remote)
-                raise ValueError('Kaggle stopped this notebook. Check the session in your Kaggle account and Retry.')
-            stage('REMOTE_RUNNING' if status == 'RUNNING' else 'WAITING_GPU', .35 if status == 'RUNNING' else .20)
-            if time.time() - remote.get('submitted_at', time.time()) > 5 * 3600:
-                raise ValueError('Kaggle session is taking longer than expected. Retry to reconnect.')
-            wait(10)
+        finally:
+            if monitor is not None:
+                monitor.close()
         stage('DOWNLOADING', .90)
         run(['kernels', 'output', remote['kernel'], '-p', str(outputs), '--file-pattern',
              rf'^(result\.json|{job_id}\.(txt|srt))$', '--force'], timeout=600)
@@ -399,41 +478,63 @@ class KaggleBackend:
             raise ValueError('Invalid dual-notebook session state.')
         pending = {index for index, entry in enumerate(remote['kernels']) if not entry.get('complete')}
         failures = 0
-        while pending:
-            any_running = False
-            for index in sorted(pending):
-                entry = remote['kernels'][index]
-                try:
-                    output, _ = run(['kernels', 'status', entry['ref']])
-                    failures = 0
-                except RuntimeError:
-                    failures += 1
-                    if failures >= 5:
-                        raise
-                    wait(10)
-                    continue
-                status = kernel_status(output)
-                if status == 'COMPLETE':
-                    entry['complete'] = True
-                    pending.remove(index)
-                    self.save(job_id, remote)
-                elif status and any(word in status for word in ('ERROR', 'CANCEL', 'FAILED')):
-                    remote['stage'] = 'failed'
-                    self.save(job_id, remote)
+        monitors = {}
+        try:
+            while pending:
+                any_running = False
+                for index in sorted(pending):
+                    entry = remote['kernels'][index]
                     try:
-                        self.cleanup(job_id)
-                    except Exception:
-                        pass  # Exact owned resources remain recorded for Retry cleanup.
-                    raise ValueError('One Kaggle shard failed. Retry the complete job after cleanup.')
-                elif status == 'RUNNING':
-                    any_running = True
-                elif status is None:
-                    raise ValueError('Kaggle returned an unknown shard status. Retry to reconnect.')
-            if pending:
-                stage('REMOTE_RUNNING' if any_running else 'WAITING_GPU', .35 if any_running else .20)
-                if time.time() - remote.get('submitted_at', time.time()) > 5 * 3600:
-                    raise ValueError('Kaggle shards are taking longer than expected. Retry to reconnect.')
-                wait(10)
+                        output, _ = run(['kernels', 'status', entry['ref']])
+                        failures = 0
+                    except RuntimeError:
+                        failures += 1
+                        if failures >= 5:
+                            raise
+                        wait(10)
+                        continue
+                    status = kernel_status(output)
+                    if status == 'COMPLETE':
+                        if index in monitors:
+                            monitors.pop(index).close()
+                        entry['complete'] = True
+                        pending.remove(index)
+                        self.save(job_id, remote)
+                    elif status and any(word in status for word in ('ERROR', 'CANCEL', 'FAILED')):
+                        remote['stage'] = 'failed'
+                        self.save(job_id, remote)
+                        try:
+                            self.cleanup(job_id)
+                        except Exception:
+                            pass  # Exact owned resources remain recorded for Retry cleanup.
+                        raise ValueError('One Kaggle shard failed. Retry the complete job after cleanup.')
+                    elif status == 'RUNNING':
+                        any_running = True
+                        if not entry.get('first_log_seen_at'):
+                            if not entry.get('running_since'):
+                                entry['running_since'] = time.time()
+                                self.save(job_id, remote)
+                            if index not in monitors:
+                                monitors[index] = self.cli.watch_first_log(entry['ref'])
+                            monitor = monitors[index]
+                            if monitor.seen.is_set():
+                                entry['first_log_seen_at'] = monitor.first_log_at or time.time()
+                                self.save(job_id, remote)
+                                monitors.pop(index).close()
+                            elif silent_startup_overdue(entry['running_since'], monitor):
+                                monitors.pop(index).close()
+                                self._restart_silent_kernel(job_id, remote, entry,
+                                    kernel / str(index), run, index=index)
+                    elif status is None:
+                        raise ValueError('Kaggle returned an unknown shard status. Retry to reconnect.')
+                if pending:
+                    stage('REMOTE_RUNNING' if any_running else 'WAITING_GPU', .35 if any_running else .20)
+                    if time.time() - remote.get('submitted_at', time.time()) > 5 * 3600:
+                        raise ValueError('Kaggle shards are taking longer than expected. Retry to reconnect.')
+                    wait(10)
+        finally:
+            for monitor in monitors.values():
+                monitor.close()
 
         stage('DOWNLOADING', .90)
         results = []

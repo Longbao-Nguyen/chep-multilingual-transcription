@@ -122,8 +122,16 @@ function UserGuide({ onClose }: { onClose: () => void }) {
         <ol><li>Select your processing device.</li><li>Select your transcription language and model.</li><li>Add your audio files to the queue.</li><li>Click <strong>Start</strong> to begin transcription.</li></ol>
         <p><strong>Processing device and model selections are locked for each file once it is added to the queue.</strong> Changing these settings afterward will only affect newly added files. To use a different processing device or model for an existing file, remove that file from the queue and add it again with the desired settings.</p>
       </section>
+      <p>You can follow progress on Kaggle: click <strong>Create/Sign in an account</strong>, then click <strong>View Active Events</strong> in the bottom-left corner.</p>
     </div>
   </dialog>;
+}
+function CleanupNotice({ job, onExpire }: { job: PendingCleanup; onExpire: (id: string) => void }) {
+  useEffect(() => {
+    const timer = setTimeout(() => onExpire(job.id), 5000);
+    return () => clearTimeout(timer);
+  }, [job.id, onExpire]);
+  return <div className="cleanup-banner" role="alert"><span>{job.name}: cleanup pending{job.owner ? ` in ${job.owner}'s Kaggle account` : ''}. {Object.values(job.errors).join(' ') || 'Chep will retry cleanup automatically.'}</span></div>;
 }
 export default function App() {
   const [guideOpen, setGuideOpen] = useState(false);
@@ -134,6 +142,7 @@ export default function App() {
   const [status, setStatus] = useState<Status | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [dismissedCleanup, setDismissedCleanup] = useState<string[]>([]);
   const [connectionError, setConnectionError] = useState('');
   const [busy, setBusy] = useState(false);
   const [selectionPending, setSelectionPending] = useState(false);
@@ -145,6 +154,23 @@ export default function App() {
   const uploadLock = useRef(false);
   const mounted = useRef(true);
   const epoch = useRef(0);
+  const dismissCleanup = useCallback((id: string) => {
+    setDismissedCleanup(current => current.includes(id) ? current : [...current, id]);
+  }, []);
+  const pendingCleanupIds = status?.queue.cleanup_pending.map(job => job.id).join('|') || '';
+  useEffect(() => {
+    const active = new Set(pendingCleanupIds ? pendingCleanupIds.split('|') : []);
+    setDismissedCleanup(current => {
+      const kept = current.filter(id => active.has(id));
+      return kept.length === current.length ? current : kept;
+    });
+  }, [pendingCleanupIds]);
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(''), 5000);
+    return () => clearTimeout(timer);
+  }, [notice]);
+  useEffect(() => { if (departure) setNotice(''); }, [departure]);
   const refresh = useCallback(async (signal?: AbortSignal) => {
     const generation = epoch.current;
     const response = await request('/status', { signal });
@@ -206,7 +232,7 @@ export default function App() {
       const response = await request(path, { method, ...(body ? { body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } } : {}) });
       if (method === 'DELETE' || path.endsWith('/cleanup')) {
         const result = await response.json();
-        setNotice(result.cleanup_pending ? 'Job removed from the queue. Resource cleanup is pending; use Retry cleanup below.' : method === 'DELETE' ? 'Job removal and cleanup completed.' : 'Kaggle cleanup completed.');
+        setNotice(result.cleanup_pending ? 'Job removed from the queue. Chep will retry resource cleanup automatically.' : method === 'DELETE' ? 'Job removal and cleanup completed.' : 'Kaggle cleanup completed.');
       }
       // Invalidate status requests that began during the mutation too.
       epoch.current++;
@@ -268,8 +294,7 @@ export default function App() {
     <div className="job-main"><div className="job-heading"><h3 title={job.name}>{job.name}</h3><span className={`badge ${job.status.toLowerCase()}`}>{ACTIVE.has(job.status) && <LoaderCircle size={12} className="spin"/>}{LABELS[job.status] || job.status}</span></div>
       <p>{bytes(job.size)}{job.duration ? ` · ${duration(job.duration)}` : ''}{ACTIVE.has(job.status) ? ` · ${Math.round(job.progress * 100)}%` : ''}</p>
       <JobMetadata job={job}/>
-      {job.remote && (() => { const remote = parse<Remote>(job.remote); return remote && !remote.cleaned ? <div className="remote-session">
-        <a href={`https://www.kaggle.com/code/${remote.kernel}`} target="_blank" rel="noreferrer">Open Kaggle session</a>
+      {job.remote && (() => { const remote = parse<Remote>(job.remote); return remote && !remote.cleaned && (remote.cleanup_error || ['COMPLETED','CANCELLED','FAILED'].includes(job.status)) ? <div className="remote-session">
         {remote.cleanup_error && <p className="job-error">{remote.cleanup_error}</p>}
         {['COMPLETED','CANCELLED','FAILED'].includes(job.status) && <button className="text-button" disabled={busy || status?.queue.active_id === job.id} onClick={() => void action(`/jobs/${job.id}/cleanup`)}>Remove files from Kaggle</button>}
       </div> : null; })()}
@@ -318,7 +343,7 @@ export default function App() {
       <main className="content">
         {(error || connectionError) && <div className="error-banner" role="alert">{error || connectionError}<button className="icon-button" onClick={() => setError('')} aria-label="Dismiss message"><X size={16}/></button></div>}
         {notice && <div className="success-banner" role="status">{notice}<button className="icon-button" onClick={() => setNotice('')} aria-label="Dismiss message"><X size={16}/></button></div>}
-        {status?.queue.cleanup_pending.map(job => <div className="cleanup-banner" key={job.id}><span>{job.name}: cleanup pending{job.owner ? ` in ${job.owner}'s Kaggle account` : ''}. {Object.values(job.errors).join(' ') || 'Retry to finish removing resources.'}</span><button className="small-button" disabled={busy} onClick={() => void action(`/jobs/${job.id}/cleanup`)}>Retry cleanup</button></div>)}
+        {status?.queue.cleanup_pending.filter(job => !dismissedCleanup.includes(job.id)).map(job => <CleanupNotice key={job.id} job={job} onExpire={dismissCleanup}/>)}
         {!sessionConnected && status && <p className="session-warning" role="status">Close detection is reconnecting. Use Close Chep to choose whether to quit or run in background.</p>}
         {!status && !connectionError && <div className="loading-state"><LoaderCircle className="spin"/>Connecting to the application...</div>}
         {tab === 'workspace' && <div className="workspace-grid"><div className="primary-column">
@@ -332,7 +357,7 @@ export default function App() {
           {completed > 0 && <button className="history-link" onClick={() => setTab('history')}><CheckCircle2 size={18}/>{completed} completed transcript{completed !== 1 ? 's' : ''}<span>View history <ArrowRight size={16}/></span></button>}
         </div><aside className="details-column">
           <section className="engine-card"><div className="card-kicker"><Cpu size={17}/>PROCESSING DEVICE</div>
-            <label className="field-label" htmlFor="device">Processing device</label><select id="device" value={status?.settings.device || 'auto'} disabled={locked} onChange={e => void action('/settings', 'PUT', { device: e.target.value })}><option value="auto">Local GPU (if CUDA available)</option><option value="kaggle">Online GPU (Kaggle, free)</option><option value="cpu">CPU only</option></select>
+            <label className="field-label" htmlFor="device">Processing device</label><select id="device" value={status?.settings.device || 'auto'} disabled={locked} onChange={e => void action('/settings', 'PUT', { device: e.target.value })}><option value="kaggle">Online GPU (Kaggle, recommended)</option><option value="auto">Local GPU (if CUDA available)</option><option value="cpu">CPU only</option></select>
             {online ? <div className="online-device">
               <h2>Online GPU</h2>
               <p className="engine-reason">Audio is processed on your private Kaggle account, deleted after completion, and saved to History. Kaggle includes 30 free GPU hours/week.</p>

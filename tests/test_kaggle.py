@@ -1,5 +1,7 @@
 import hashlib
+import io
 import json
+import subprocess
 import threading
 from pathlib import Path
 from unittest.mock import Mock
@@ -10,8 +12,8 @@ from fastapi.testclient import TestClient
 from local_app.api import create_app
 from local_app.catalog import selection
 from local_app.config import prepare_data
-from local_app.kaggle_backend import KaggleBackend, kernel_status, validate_result
-from local_app.kaggle_cli import KaggleCLI, KaggleStopped, safe_error
+from local_app.kaggle_backend import KaggleBackend, kernel_status, silent_startup_overdue, validate_result
+from local_app.kaggle_cli import FirstLogMonitor, KaggleCLI, KaggleStopped, safe_error
 from local_app.kaggle_notebook import notebook
 from local_app.store import Store
 
@@ -106,6 +108,40 @@ def test_kernel_metadata_code_is_private_input_and_pinned_model():
     assert 'snapshot_download' not in code
     assert 'Pinned public model Dataset' in code
     assert 'auth' not in code.lower()
+
+
+def test_first_log_monitor_detects_live_cli_output(monkeypatch):
+    class Process:
+        stdout = io.StringIO('\n{"event":"progress"}\n')
+        def poll(self):
+            return 0
+        def communicate(self):
+            return '', ''
+    commands = []
+    def popen(command, **kwargs):
+        commands.append(command)
+        assert kwargs['stderr'] == subprocess.DEVNULL
+        return Process()
+    monkeypatch.setattr('local_app.kaggle_cli.subprocess.Popen', popen)
+    cli = Mock()
+    cli.command.side_effect = lambda args: ['kaggle', *args]
+    monitor = FirstLogMonitor(cli, 'tester/chep-run-' + 'a' * 24)
+    try:
+        assert monitor.seen.wait(2)
+        assert monitor.first_log_at is not None
+        assert commands == [['kaggle', 'kernels', 'logs', 'tester/chep-run-' + 'a' * 24, '--follow']]
+    finally:
+        monitor.close()
+
+
+def test_first_log_timeout_requires_120_seconds_and_a_live_probe():
+    monitor = Mock(seen=threading.Event(), started_at=100)
+    assert not silent_startup_overdue(100, monitor, now=219.999)
+    assert silent_startup_overdue(100, monitor, now=220)
+    monitor.started_at = 215  # Allow a resumed live stream to replay old logs.
+    assert not silent_startup_overdue(100, monitor, now=220)
+    monitor.seen.set()
+    assert not silent_startup_overdue(100, monitor, now=300)
 
 
 def test_status_parser_does_not_treat_error_message_as_remote_error():

@@ -23,7 +23,7 @@ def test_shared_gpu_eligibility(tmp_path,vendor,driver,compute,compatible,reason
     script.write_text(f"""function Get-CimInstance {{ [pscustomobject]@{{Name='Test GPU';PNPDeviceID='PCI\\VEN_{vendor}'}} }}
 function Get-Command {{ [pscustomobject]@{{Source='{escaped(fake)}'}} }}
 & '{escaped(ROOT/'config/gpu-detect.ps1')}'
-""")
+""", encoding='utf-8-sig')
     result=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',str(script)],
                           capture_output=True,text=True,encoding='utf-8-sig',timeout=15)
     assert result.returncode==0,result.stderr

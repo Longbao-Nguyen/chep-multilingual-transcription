@@ -1,5 +1,7 @@
 import json
 import hashlib
+import threading
+import time
 import wave
 
 import pytest
@@ -10,6 +12,19 @@ from local_app.kaggle_backend import KaggleBackend
 from local_app.kaggle_merge import merge_segments, shard_ranges
 from local_app.store import Store
 from local_app.worker import select_range
+
+
+class FirstLogStub:
+    def __init__(self, has_log=False):
+        self.seen = threading.Event()
+        if has_log:
+            self.seen.set()
+        self.first_log_at = time.time() if has_log else None
+        self.started_at = time.time() - 1
+        self.closed = False
+
+    def close(self):
+        self.closed = True
 
 
 def test_21_minute_boundary_and_five_second_overlap():
@@ -164,3 +179,80 @@ def test_dual_backend_merges_verified_shards_and_cleans_both_kernels(tmp_path, m
     remote = json.loads(store.get('job')['remote'])
     assert remote['cleaned'] and len(remote['kernels']) == 2
     assert len([args for args in calls if args[:2] == ['kernels', 'delete']]) == 2
+
+
+def test_silent_dual_shard_retries_only_that_notebook(tmp_path, monkeypatch):
+    class RetrySubmitted(Exception):
+        pass
+
+    store = Store(prepare_data(tmp_path))
+    store.add('job', 'sample.wav', 5, selection('en', 'kaggle'))
+    (tmp_path / 'sources/job').write_bytes(b'audio')
+    backend = KaggleBackend(store)
+    monkeypatch.setattr('local_app.worker.decoded_duration', lambda _: 22 * 60)
+    monkeypatch.setattr('local_app.kaggle_backend.FIRST_LOG_TIMEOUT_SECONDS', 0)
+    monkeypatch.setattr('local_app.kaggle_backend.FIRST_LOG_RECONNECT_GRACE_SECONDS', 0)
+    monkeypatch.setattr(backend.cli, 'identity', lambda: 'tester')
+    monitors = []
+    def watch(ref):
+        monitor = FirstLogStub(ref.endswith('-0'))
+        monitors.append(monitor)
+        return monitor
+    monkeypatch.setattr(backend.cli, 'watch_first_log', watch)
+    calls = []
+    def run(args, **kwargs):
+        calls.append(args)
+        if args[:2] == ['datasets', 'status']:
+            return ('ready', 0) if any(call[:2] == ['datasets', 'create'] for call in calls) else ('missing', 1)
+        if args[:2] == ['kernels', 'status']:
+            return 'x has status "KernelWorkerStatus.RUNNING"', 0
+        if args[:2] == ['kernels', 'push'] and len([call for call in calls if call[:2] == ['kernels', 'push']]) == 3:
+            raise RetrySubmitted()
+        return '', 0
+    monkeypatch.setattr(backend.cli, 'run', run)
+    with pytest.raises(RetrySubmitted):
+        backend.run(store.get('job'), lambda: False)
+    remote = json.loads(store.get('job')['remote'])
+    old_ref = remote['retired_kernels'][0]['ref']
+    assert old_ref.endswith('-1')
+    assert [call[2] for call in calls if call[:2] == ['kernels', 'delete']] == [old_ref]
+    assert remote['kernels'][0]['first_log_seen_at'] is not None
+    assert remote['kernels'][0].get('startup_retries', 0) == 0
+    assert remote['kernels'][1]['ref'] != old_ref
+    assert remote['kernels'][1]['startup_retries'] == 1
+    assert remote['dataset'].startswith('tester/chep-input-')
+    assert all(monitor.closed for monitor in monitors)
+
+
+def test_silent_single_notebook_gets_new_ref_without_reupload(tmp_path, monkeypatch):
+    class RetrySubmitted(Exception):
+        pass
+
+    store = Store(prepare_data(tmp_path))
+    store.add('job', 'sample.wav', 5, selection('en', 'kaggle'))
+    (tmp_path / 'sources/job').write_bytes(b'audio')
+    backend = KaggleBackend(store)
+    monkeypatch.setattr('local_app.worker.decoded_duration', lambda _: 60)
+    monkeypatch.setattr('local_app.kaggle_backend.FIRST_LOG_TIMEOUT_SECONDS', 0)
+    monkeypatch.setattr('local_app.kaggle_backend.FIRST_LOG_RECONNECT_GRACE_SECONDS', 0)
+    monkeypatch.setattr(backend.cli, 'identity', lambda: 'tester')
+    monkeypatch.setattr(backend.cli, 'watch_first_log', lambda ref: FirstLogStub())
+    calls = []
+    def run(args, **kwargs):
+        calls.append(args)
+        if args[:2] == ['datasets', 'status']:
+            return ('ready', 0) if any(call[:2] == ['datasets', 'create'] for call in calls) else ('missing', 1)
+        if args[:2] == ['kernels', 'status']:
+            return ('missing', 1) if not any(call[:2] == ['kernels', 'push'] for call in calls) else ('x has status "KernelWorkerStatus.RUNNING"', 0)
+        if args[:2] == ['kernels', 'push'] and len([call for call in calls if call[:2] == ['kernels', 'push']]) == 2:
+            raise RetrySubmitted()
+        return '', 0
+    monkeypatch.setattr(backend.cli, 'run', run)
+    with pytest.raises(RetrySubmitted):
+        backend.run(store.get('job'), lambda: False)
+    remote = json.loads(store.get('job')['remote'])
+    old_ref = remote['retired_kernels'][0]['ref']
+    assert [call[2] for call in calls if call[:2] == ['kernels', 'delete']] == [old_ref]
+    assert remote['kernel'] != old_ref
+    assert remote['startup_retries'] == 1
+    assert len([call for call in calls if call[:2] == ['datasets', 'create']]) == 1

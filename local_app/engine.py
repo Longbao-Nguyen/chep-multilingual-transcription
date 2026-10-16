@@ -33,6 +33,8 @@ class Engine:
         self.process = None
         self.thread = None
         self.cleanup_thread = None
+        self.cleanup_stop = threading.Event()
+        self.cleanup_wake = threading.Event()
         self.closing = False
         self.worker_job = WorkerJob()
         self.hardware = detect('cpu')
@@ -74,14 +76,20 @@ class Engine:
                         for job in pending]}
 
     def start_cleanup_recovery(self):
+        if self.cleanup_thread and self.cleanup_thread.is_alive():
+            self.cleanup_wake.set()
+            return
         def recover():
-            for job in self.store.pending_cleanup():
-                if self.closing:
-                    break
-                try:
-                    self.retry_cleanup(job['id'])
-                except Exception:
-                    log.exception('Deferred cleanup retry failed for job %s', job['id'])
+            while not self.cleanup_stop.is_set():
+                for job in self.store.pending_cleanup():
+                    if self.cleanup_stop.is_set():
+                        return
+                    try:
+                        self.retry_cleanup(job['id'])
+                    except Exception:
+                        log.exception('Deferred cleanup retry failed for job %s', job['id'])
+                self.cleanup_wake.wait(60)
+                self.cleanup_wake.clear()
         self.cleanup_thread = threading.Thread(target=recover, daemon=True)
         self.cleanup_thread.start()
 
@@ -372,6 +380,8 @@ class Engine:
             self.state = "PAUSING"
             if self.process and self.process.poll() is None:
                 self.process.terminate()
+        self.cleanup_stop.set()
+        self.cleanup_wake.set()
         self.runtime.close()
         self.components.close()
         if self.thread:

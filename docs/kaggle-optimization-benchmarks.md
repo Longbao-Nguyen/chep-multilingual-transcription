@@ -1,5 +1,7 @@
 # Kaggle optimization benchmarks and integration
 
+The 2026-10-16 app-flow log-timestamp audit, its timing limitation, and Kaggle account cleanup are recorded at the end of this document.
+
 Benchmarks were run on 2026-10-14. The production Kaggle path was subsequently
 updated at the user's request; the historical benchmark method and results below
 remain unchanged. No installer or deployment is included in this record.
@@ -333,3 +335,54 @@ French run had no seam words removed. The separate measured 99-minute seam's
 nine-word duplicate was removed by the merge rule in a local replay. No live
 second-account notebook run was possible; public visibility and the different-
 owner code path were checked as described above.
+
+## Live RUNNING-to-first-log benchmark - 2026-10-16
+
+The same dual-notebook app-flow harness was rerun for **five Rdv.m4a trials and five b2.m4a trials (20 valid notebooks)**. For each notebook, monitoring started *before* its `kernels_push` call: one watcher polled Kaggle session status about every two seconds while another subscribed to the live log stream. The start is the local UTC/monotonic time when the status API first returned `RUNNING`; the end is local receipt of the first nonempty streamed log event. Each trial attached the original full audio through a new private Dataset, submitted two app-generated T4 notebooks with five-second overlap, verified audio/model hashes and GPU, then stopped before inference. This measures the real setup path, but not full transcription time.
+
+Kaggle's supported CLI exposes `RUNNING` but **does not return the UI's exact “Running for … s” counter**. No watcher saw a `QUEUED` response before its first `RUNNING` response (new private notebooks briefly returned 403). Each table cell gives **observed lower bound–conservative upper bound**, in seconds: first live log receipt minus first observed `RUNNING`, through first live log receipt minus the start of `kernels_push`. The actual status-to-log interval lies within that range if the UI timer uses the same RUNNING transition. Status polling and HTTP response latency account for the 2.9–5.4-second range width. The first event was a Python debugger warning in all 20 notebooks, not the later attach marker. This is live API delivery, not a measurement of when the browser rendered the line.
+
+| Recording | Trial | Notebook 0 RUNNING → live log (s) | Notebook 1 RUNNING → live log (s) |
+| --- | ---: | ---: | ---: |
+| Rdv.m4a | 1 | 16.375–21.687 | 17.454–22.157 |
+| Rdv.m4a | 2 | 34.062–38.593 | 16.500–20.656 |
+| Rdv.m4a | 3 | 52.469–56.516 | 13.609–18.265 |
+| Rdv.m4a | 4 | 13.265–17.000 | 58.844–64.203 |
+| Rdv.m4a | 5 | 13.328–17.766 | 12.282–17.000 |
+| b2.m4a | 1 | 14.985–17.922 | 14.265–18.906 |
+| b2.m4a | 2 | 11.250–15.250 | 13.297–17.953 |
+| b2.m4a | 3 | 63.812–68.187 | 56.703–60.859 |
+| b2.m4a | 4 | 12.797–15.765 | 8.750–13.594 |
+| b2.m4a | 5 | 17.579–22.188 | 16.813–21.047 |
+
+Across all 20 notebooks, the mean observed lower bound was **23.922 s** (Rdv 24.819 s; b2 23.025 s); the mean conservative upper bound was **28.276 s**. The median lower bound was 15.680 s, with a range of 8.750–63.812 s. Five notebooks took more than 30 seconds and four took more than 50 seconds even by the lower bound; one exceeded 60 seconds. The later first log within each pair had a mean lower bound of 29.863 s. A 20-notebook sample cannot rule out the user's previously observed 107-second or 600-second cases.
+
+The large difference between the 6–12-second *persisted log-event time fields* and some 52–64-second *wall-clock RUNNING-to-live-log intervals* shows why the earlier log-field average of 7.269 seconds was not a startup estimate. This experiment confirms that Kaggle can expose `RUNNING` well before its live API delivers the first line in this app flow. It does not by itself prove whether the remaining gap is Kaggle worker/cell scheduling, work before the warning, or log-stream delivery. A browser comparison and an immediate flushed cell-start marker would separate those possibilities.
+
+All 20 valid notebooks reached the attach-confirmed file and log with Tesla T4 and matching source/model identity. All 20 notebooks and ten private audio Datasets were deleted. One additional Rdv trial was excluded because Kaggle SDK output retrieval hit Windows cp1252 encoding; both notebooks and its Dataset were also deleted. The rerun used UTF-8 and passed. Final `longnj` inventory showed **zero notebooks** and only the five required public model Datasets. Raw UTC times, status observations, live-log receipt times, event fields, attach checks and cleanup flags are in gitignored `test-results/kaggle-startup/running-live-2026-10-16/results.json`; the reproducible harness is `scripts/kaggle_app_startup_benchmark.py`.
+
+### Kaggle account cleanup
+
+Before this campaign, ten old notebooks and three obsolete Datasets were removed from longnj. The French public model Dataset display title was changed to **Chep French CTranslate2 model** without changing its slug longnj/french-whisper-ct2 or version 1. The post-campaign inventory contains the five required public model Datasets (French, English, Spanish, German, Vietnamese) and no notebooks. The old cleanup ledger is in gitignored test-results/kaggle-startup/cleanup.json.
+
+## Live Kaggle UI comparison - stopped at five pairs
+
+At the user's request, the same app-flow measurement was repeated with two notebooks per trial and an interactive pause before each submission. The user watched the Kaggle **Running for … s** counter when the first log line appeared in the browser. The user stopped the campaign after **five valid pairs / ten notebooks** (three Rdv.m4a pairs and two b2.m4a pairs), because the CLI and web times looked sufficiently close for this check. These ten notebooks are an additional sample, not the planned extra twenty. No inference was run; each notebook stopped after verifying the T4, audio and attached French model.
+
+The CLI/API column is the lower–upper interval from first observed `RUNNING` to first live-log receipt, as defined above. UI entries are the user's approximate live readings and were not generated by the CLI. Notebook indices are the two shards of the same audio Dataset.
+
+| Recording | Trial | Notebook 0 CLI (s) | Notebook 0 UI (s) | Notebook 1 CLI (s) | Notebook 1 UI (s) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Rdv.m4a | 1 | 9.968–14.781 | 5–6 | 44.265–48.562 | 34–37 |
+| b2.m4a | 1 | 9.375–13.453 | 5 | 10.250–15.282 | 6–7 |
+| Rdv.m4a | 2 | 56.000–60.016 | approximately 52 | 52.703–57.781 | 50–52 |
+| b2.m4a | 2 | 22.078–27.234 | 27 | 12.640–17.562 | 6–7 |
+| Rdv.m4a | 3 | 26.078–30.078 | 20 | 10.437–15.015 | 4–5 |
+
+The ten CLI lower bounds have a mean of **25.379 s**, a median of **17.359 s**, and a range of **9.375–56.000 s**. Three exceeded 30 seconds; two exceeded 50 seconds. Browser readings tracked the same broad pattern, including the pair whose two notebooks both took about 50 seconds. They were usually several seconds lower than the CLI/API receipt intervals, so the two signals should not be treated as identical clocks or exact substitutes. This sample did not reproduce a five-minute gap and cannot estimate how rare that event is.
+
+All ten valid notebooks and their five private audio Datasets were deleted after the user's comparison. Three earlier attempts failed or were excluded (one transient status connection error, one malformed Kaggle Dataset-upload response, and one interactive terminal input failure); their resources were cleaned. Preparation of a sixth pair was cancelled before either notebook was submitted, and its private Dataset was deleted. The final `longnj` inventory again showed **zero notebooks** and only the five public model Datasets. Raw CLI observations and cleanup flags are in gitignored `test-results/kaggle-startup/running-live-ui-2026-10-16/results.json`; the user's approximate UI readings are preserved separately in `ui-observations.json` in the same folder.
+
+## App response to a silent RUNNING notebook
+
+Chep now starts a live `kaggle kernels logs --follow` monitor when each notebook is first observed as `RUNNING`. If no log line arrives within 120 seconds of that observation, Chep deletes that notebook and submits a fresh private notebook with the same audio and attached public model Datasets. In dual mode, each shard has its own timer and log monitor; only the silent shard is replaced, while the other shard continues or remains complete. The new notebook ID is saved before submission so cleanup can track it after a restart. Chep allows two automatic replacements per shard; an additional silent start fails the job. On app restart, the saved RUNNING time is preserved and the live log monitor gets ten seconds to reconnect before a timeout decision. This rule measures first observed CLI `RUNNING` to first received live log line, which is close to but not identical to the browser timer used in the comparison above.
