@@ -57,11 +57,20 @@ class KaggleGpuCheck:
                 if saved.get('owner') != username:
                     raise ValueError('Sign in as ' + str(saved.get('owner')) + ' to remove a previous GPU test notebook.')
                 self._delete_probe(saved['ref'], username)
-            output, _ = self.cli.run(['quota', '--format', 'json'])
-            rows = json.loads(output)
+            # Kaggle CLI 2.2.4 prepends an update warning to stdout, even with
+            # --format json. Keep the warning out of the machine-readable result.
+            output, _ = self.cli.run(['--no-warn', 'quota', '--format', 'json'])
+            try:
+                rows = json.loads(output)
+            except (TypeError, json.JSONDecodeError):
+                self._set('error', username, 'Kaggle did not return valid GPU quota data. Check your connection and try again.')
+                return
+            if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+                self._set('error', username, 'Kaggle returned an unexpected GPU quota response. Try again later.')
+                return
             gpu = next((row for row in rows if row.get('resource') == 'GPU'), None)
             if not gpu:
-                self._set('verification_required', username, 'Kaggle did not report GPU access. Verify your phone number in ')
+                self._set('verification_required', username, 'GPU access is not verified for this Kaggle account. Verify your phone number in ')
                 return
             if gpu.get('remaining', '').startswith('0.00'):
                 self._set('quota_exhausted', username, 'Your Kaggle GPU quota is exhausted. Check again after it refreshes.', gpu)
@@ -83,7 +92,7 @@ class KaggleGpuCheck:
             output, code = self.cli.run(['kernels', 'push', '-p', str(folder), '--accelerator', 'NvidiaTeslaT4', '-t', '300'], timeout=120, check=False)
             if code:
                 if re.search(r'\b403\b|verif|phone', output, re.I):
-                    self._set('verification_required', username, 'Kaggle has not enabled GPU access for this account. Verify your phone number in ')
+                    self._set('verification_required', username, 'Your Kaggle account is not verified for GPU access. Verify your phone number in ')
                 else:
                     self._set('error', username, safe_error(output))
                 return

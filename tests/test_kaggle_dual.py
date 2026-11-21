@@ -119,7 +119,7 @@ def test_foreign_account_attaches_public_model_and_only_owns_its_inputs(tmp_path
     folder = tmp_path / 'work/job/kernel' / ('0' if dual else '')
     metadata = json.loads((folder / 'kernel-metadata.json').read_text(encoding='utf-8'))
     assert metadata['id'].startswith('otheruser/chep-run-')
-    assert metadata['dataset_sources'] == [remote['dataset'], 'longnj/english-whisper-ct2/1']
+    assert metadata['dataset_sources'] == [remote['dataset'], 'french-transcript/english-whisper-ct2/1']
     assert remote['dataset'].startswith('otheruser/chep-input-')
     assert remote['dual'] is dual
     backend.cleanup('job')
@@ -156,7 +156,7 @@ def test_dual_backend_merges_verified_shards_and_cleans_both_kernels(tmp_path, m
                           'text': 'six mois de lecture machine et 573 000 euros de réactif seul'}])
             result = {'schema_version': 1, 'job_id': 'job', 'source_sha256': remote['source_sha256'],
                       'part_index': index, 'span': remote['spans'][index],
-                      'source_duration': 22 * 60, 'model_dataset': 'longnj/english-whisper-ct2/1',
+                      'source_duration': 22 * 60, 'model_dataset': 'french-transcript/english-whisper-ct2/1',
                       'ok': True, 'profile': {'device': 'cuda', 'provider': 'kaggle',
                       'device_name': 'Tesla T4', 'language': 'en', 'revision': config['model_config']['revision'],
                       **config['model_config']['sweet_spot']}, 'files': {}}

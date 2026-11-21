@@ -1,138 +1,103 @@
 """Durable remote transcription; only explicitly selected Kaggle jobs leave this machine."""
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import os
 import re
-import shutil
 import time
 import uuid
-from pathlib import Path
 from contextlib import nullcontext
+from pathlib import Path
+from typing import Any, Callable
 
 from .catalog import resolve_artifact
 from .config import atomic_json
+from .kaggle_artifacts import (
+    format_merged_transcripts,
+    prepare_audio_dataset_dir,
+    sha,
+    validate_model_profile,
+    validate_result,
+    write_dual_kernel_bundles,
+    write_single_kernel_bundle,
+)
 from .kaggle_cli import KaggleCLI, KaggleStopped
+from .kaggle_errors import CleanupError, cleanup_failure, cleanup_response
 from .kaggle_merge import DUAL_THRESHOLD_SECONDS, merge_segments, shard_ranges
-from .kaggle_notebook import notebook
+from .kaggle_polling import (
+    DEFAULT_FIRST_LOG_RECONNECT_GRACE_SECONDS,
+    DEFAULT_FIRST_LOG_TIMEOUT_SECONDS,
+    MAX_FIRST_LOG_RETRIES,
+    kernel_status,
+    silent_startup_overdue as _silent_startup_overdue,
+    wait_cancellable,
+    wait_for_dataset_ready,
+)
 
 REMOTE_ACTIVE = ('UPLOADING', 'WAITING_GPU', 'REMOTE_RUNNING', 'DOWNLOADING')
 MAX_REMOTE_BYTES = 2 * 1024**3
-FIRST_LOG_TIMEOUT_SECONDS = 120
-FIRST_LOG_RECONNECT_GRACE_SECONDS = 10
-MAX_FIRST_LOG_RETRIES = 2
+FIRST_LOG_TIMEOUT_SECONDS = DEFAULT_FIRST_LOG_TIMEOUT_SECONDS
+FIRST_LOG_RECONNECT_GRACE_SECONDS = DEFAULT_FIRST_LOG_RECONNECT_GRACE_SECONDS
 log = logging.getLogger(__name__)
 
-
-def cleanup_response(output, kind, ref):
-    """Classify a failed deletion without accepting unrelated failures as 404s."""
-    lower = output.lower()
-    if re.search(r'\b(401|403|429|5\d\d)\b', lower):
-        return 'error'
-    if re.search(r'\b404\b', lower):
-        return 'missing'
-    label = 'notebook' if kind == 'kernels' else 'dataset'
-    if 'not found' in lower and (label in lower or kind[:-1] in lower or ref.lower() in lower):
-        return 'missing'
-    return 'error'
-
-
-class CleanupError(ValueError):
-    def __init__(self, kind, message):
-        super().__init__(message)
-        self.kind = kind
+__all__ = [
+    'REMOTE_ACTIVE',
+    'MAX_REMOTE_BYTES',
+    'FIRST_LOG_TIMEOUT_SECONDS',
+    'FIRST_LOG_RECONNECT_GRACE_SECONDS',
+    'MAX_FIRST_LOG_RETRIES',
+    'CleanupError',
+    'cleanup_response',
+    'cleanup_failure',
+    'kernel_status',
+    'silent_startup_overdue',
+    'sha',
+    'validate_result',
+    'validate_model_profile',
+    'KaggleBackend',
+]
 
 
-def cleanup_failure(output):
-    if re.search(r'\b401\b|unauthenticated', output, re.I):
-        return CleanupError('authentication', 'Kaggle authentication expired. Reauthenticate the CLI; Chep will retry cleanup automatically.')
-    if re.search(r'\b403\b|forbidden|permission denied', output, re.I):
-        return CleanupError('permission', 'Kaggle denied deletion. Check the signed-in account; Chep will retry cleanup automatically.')
-    if re.search(r'\b429\b|too many requests|rate limit', output, re.I):
-        return CleanupError('rate_limit', 'Kaggle is rate limiting requests. Chep will retry cleanup automatically.')
-    if re.search(r'\b5\d\d\b', output):
-        return CleanupError('server', 'Kaggle server error. Chep will retry cleanup automatically.')
-    return CleanupError('unexpected', 'Kaggle could not remove this resource. Check your account; Chep will retry cleanup automatically.')
-
-
-def kernel_status(output):
-    match = re.search(r'has status "(?:KernelWorkerStatus\.)?([A-Z_]+)"', output)
-    return match.group(1) if match else None
-
-
-def silent_startup_overdue(running_since, monitor, now=None):
-    current = time.time() if now is None else now
-    return (not monitor.seen.is_set() and
-            current - running_since >= FIRST_LOG_TIMEOUT_SECONDS and
-            current - monitor.started_at >= FIRST_LOG_RECONNECT_GRACE_SECONDS)
-
-
-def sha(path):
-    with path.open('rb') as stream:
-        return hashlib.file_digest(stream, 'sha256').hexdigest()
-
-
-def validate_result(directory, job_id, source_hash, *, stem=None, part_index=None,
-                    span=None, source_duration=None, model_dataset=None):
-    manifest = directory / 'result.json'
-    if not manifest.is_file() or manifest.stat().st_size > 1024**2:
-        raise ValueError('Kaggle did not return a valid result manifest.')
-    result = json.loads(manifest.read_text(encoding='utf-8'))
-    if result.get('schema_version') != 1 or result.get('job_id') != job_id or result.get('source_sha256') != source_hash:
-        raise ValueError('Kaggle result does not match this recording.')
-    if result.get('ok') is not True:
-        raise ValueError('Kaggle transcription failed: ' + str(result.get('error', 'Unknown remote error.'))[:1000])
-    if part_index is not None and result.get('part_index') != part_index:
-        raise ValueError('Kaggle shard index mismatch.')
-    if span is not None and result.get('span') != list(span):
-        raise ValueError('Kaggle shard range mismatch.')
-    if source_duration is not None:
-        actual = result.get('source_duration')
-        if not isinstance(actual, (int, float)) or abs(actual - source_duration) > .1:
-            raise ValueError('Kaggle decoded a different recording duration.')
-    if model_dataset is not None and result.get('model_dataset') != model_dataset:
-        raise ValueError('Kaggle returned a different public model Dataset.')
-    profile = result.get('profile', {})
-    if profile.get('device') != 'cuda' or profile.get('provider') != 'kaggle' or 'T4' not in profile.get('device_name', ''):
-        raise ValueError('Kaggle did not confirm the requested GPU profile.')
-    for ext in (('txt', 'srt', 'segments.json') if span is not None else ('txt', 'srt')):
-        path = directory / ((stem or job_id) + '.' + ext)
-        meta = result.get('files', {}).get(ext, {})
-        if not path.is_file() or path.is_symlink() or path.stat().st_size != meta.get('size') or sha(path) != meta.get('sha256'):
-            raise ValueError('Kaggle transcript integrity check failed.')
-    return result
-
-
-def validate_model_profile(result, config):
-    profile = result['profile']
-    model = config['model_config']
-    expected = model['sweet_spot']
-    if (profile.get('language') != config['language'] or
-            profile.get('revision') != model['revision'] or
-            profile.get('compute_type') != expected['compute_type'] or
-            profile.get('concurrency') != expected['concurrency']):
-        raise ValueError('Kaggle returned a different model, language, or GPU profile.')
+def silent_startup_overdue(running_since: float, monitor: Any, now: float | None = None) -> bool:
+    """Delegate silent-startup detection using this module's configurable thresholds."""
+    return _silent_startup_overdue(
+        running_since,
+        monitor,
+        now,
+        timeout_seconds=FIRST_LOG_TIMEOUT_SECONDS,
+        grace_seconds=FIRST_LOG_RECONNECT_GRACE_SECONDS,
+    )
 
 
 class KaggleBackend:
-    def __init__(self, store):
+    """High-level orchestrator for durable single- and dual-notebook Kaggle jobs."""
+
+    def __init__(self, store: Any) -> None:
         self.store = store
         self.cli = KaggleCLI(store.root)
 
-    def save(self, job_id, remote):
+    def save(self, job_id: str, remote: dict[str, Any]) -> None:
         self.store.update(job_id, remote=json.dumps(remote))
 
-    def _restart_silent_kernel(self, job_id, remote, entry, folder, run, index=None):
+    def _restart_silent_kernel(
+        self,
+        job_id: str,
+        remote: dict[str, Any],
+        entry: dict[str, Any],
+        folder: Path,
+        run: Callable[..., tuple[str, int]],
+        index: int | None = None,
+    ) -> None:
         """Replace only one RUNNING notebook after 120 seconds without a live log."""
         if entry.get('startup_retries', 0) >= MAX_FIRST_LOG_RETRIES:
-            raise ValueError('A Kaggle notebook repeatedly started without returning logs. '
-                             'Automatic retries are exhausted; retry the job later.')
+            raise ValueError(
+                'A Kaggle notebook repeatedly started without returning logs. '
+                'Automatic retries are exhausted; retry the job later.'
+            )
         old_ref = entry['ref']
         suffix = f'-{index}' if index is not None else ''
-        if not re.fullmatch(re.escape(remote['owner']) + r'/chep-run-[a-f0-9]{24}' +
-                            re.escape(suffix), old_ref):
+        if not re.fullmatch(re.escape(remote['owner']) + r'/chep-run-[a-f0-9]{24}' + re.escape(suffix), old_ref):
             raise CleanupError('metadata', 'Invalid Chep notebook ID; automatic restart was stopped.')
         output, code = run(['kernels', 'delete', old_ref, '-y'], check=False)
         if code and cleanup_response(output, 'kernels', old_ref) != 'missing':
@@ -142,31 +107,51 @@ class KaggleBackend:
         metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
         metadata.update(id=new_ref, title=new_ref.split('/')[1])
         atomic_json(metadata_path, metadata)
-        remote.setdefault('retired_kernels', []).append({
-            'ref': old_ref, 'attempted': True, 'cleaned': True})
-        remote.setdefault('startup_retry_history', []).append({
-            'old_ref': old_ref, 'new_ref': new_ref, 'part_index': index,
-            'running_since': entry.get('running_since'), 'restarted_at': time.time()})
-        entry.update(ref=new_ref, attempted=False, cleaned=False, submitted=False,
-                     complete=False, running_since=None, first_log_seen_at=None,
-                     startup_retries=entry.get('startup_retries', 0) + 1)
+        remote.setdefault('retired_kernels', []).append({'ref': old_ref, 'attempted': True, 'cleaned': True})
+        remote.setdefault('startup_retry_history', []).append(
+            {
+                'old_ref': old_ref,
+                'new_ref': new_ref,
+                'part_index': index,
+                'running_since': entry.get('running_since'),
+                'restarted_at': time.time(),
+            }
+        )
+        entry.update(
+            ref=new_ref,
+            attempted=False,
+            cleaned=False,
+            submitted=False,
+            complete=False,
+            running_since=None,
+            first_log_seen_at=None,
+            startup_retries=entry.get('startup_retries', 0) + 1,
+        )
         if index is None:
-            remote.update(kernel=new_ref, kernel_attempted=False, kernel_cleaned=False,
-                          running_since=None, first_log_seen_at=None,
-                          startup_retries=entry['startup_retries'], submitted_at=time.time())
+            remote.update(
+                kernel=new_ref,
+                kernel_attempted=False,
+                kernel_cleaned=False,
+                running_since=None,
+                first_log_seen_at=None,
+                startup_retries=entry['startup_retries'],
+                submitted_at=time.time(),
+            )
         self.save(job_id, remote)  # Persist the new owned ID before submission.
         entry['attempted'] = True
         if index is None:
             remote['kernel_attempted'] = True
         self.save(job_id, remote)
-        run(['kernels', 'push', '-p', str(folder), '--accelerator', 'NvidiaTeslaT4',
-             '-t', '14400'], timeout=180)
+        run(['kernels', 'push', '-p', str(folder), '--accelerator', 'NvidiaTeslaT4', '-t', '14400'], timeout=180)
         entry['submitted'] = True
         self.save(job_id, remote)
-        log.warning('Restarted Kaggle notebook without a first log for job %s, shard %s',
-                    job_id, index if index is not None else 'single')
+        log.warning(
+            'Restarted Kaggle notebook without a first log for job %s, shard %s',
+            job_id,
+            index if index is not None else 'single',
+        )
 
-    def cleanup(self, job_id):
+    def cleanup(self, job_id: str) -> None:
         job = self.store.get(job_id, include_removed=True)
         if not job:
             return
@@ -174,9 +159,17 @@ class KaggleBackend:
         if not remote or remote.get('cleaned'):
             return
         try:
-            kernels = (remote.get('kernels', []) if remote.get('dual') else [{
-                'ref': remote.get('kernel'), 'attempted': remote.get('kernel_attempted'),
-                'cleaned': remote.get('kernel_cleaned')}]) + remote.get('retired_kernels', [])
+            kernels = (
+                remote.get('kernels', [])
+                if remote.get('dual')
+                else [
+                    {
+                        'ref': remote.get('kernel'),
+                        'attempted': remote.get('kernel_attempted'),
+                        'cleaned': remote.get('kernel_cleaned'),
+                    }
+                ]
+            ) + remote.get('retired_kernels', [])
             pending_kernels = [entry for entry in kernels if entry.get('attempted') and not entry.get('cleaned')]
             pending_dataset = remote.get('dataset_attempted') and not remote.get('dataset_cleaned')
             if (pending_kernels or pending_dataset) and self.cli.identity() != remote['owner']:
@@ -184,10 +177,16 @@ class KaggleBackend:
             # Delete only resources recorded for this job, never enumerate/delete user resources.
             for entry in pending_kernels:
                 ref = entry['ref']
-                pattern = (re.escape(remote['owner']) + r'/chep-run-[a-f0-9]{24}' +
-                           (r'-[01]' if remote.get('dual') else ''))
+                pattern = (
+                    re.escape(remote['owner'])
+                    + r'/chep-run-[a-f0-9]{24}'
+                    + (r'-[01]' if remote.get('dual') else '')
+                )
                 if not re.fullmatch(pattern, ref):
-                    raise CleanupError('metadata', 'Invalid Chep remote resource identifier. Cleanup requires the original resource IDs.')
+                    raise CleanupError(
+                        'metadata',
+                        'Invalid Chep remote resource identifier. Cleanup requires the original resource IDs.',
+                    )
                 output, code = self.cli.run(['kernels', 'delete', ref, '-y'], check=False)
                 if code and cleanup_response(output, 'kernels', ref) != 'missing':
                     raise cleanup_failure(output)
@@ -209,13 +208,17 @@ class KaggleBackend:
             remote.update(cleaned=True, cleanup_error=None, cleanup_kind=None)
         except Exception as exc:
             remote['cleanup_error'] = str(exc)
-            remote['cleanup_kind'] = getattr(exc, 'kind', 'timeout' if 'timed out' in str(exc).lower() else 'local_cli' if isinstance(exc, OSError) else 'unexpected')
+            remote['cleanup_kind'] = getattr(
+                exc,
+                'kind',
+                'timeout' if 'timed out' in str(exc).lower() else 'local_cli' if isinstance(exc, OSError) else 'unexpected',
+            )
             log.warning('Kaggle cleanup pending for job %s: %s', job_id, type(exc).__name__)
             raise
         finally:
             self.save(job_id, remote)
 
-    def run(self, job, stopped, guard=None):
+    def run(self, job: dict[str, Any], stopped: Callable[[], bool], guard: Any = None) -> None:
         guard = guard or nullcontext()
         job_id = job['id']
         config = json.loads(job['config'])
@@ -243,99 +246,48 @@ class KaggleBackend:
             config['model_config']['kaggle_dataset'] = model_dataset
         if not remote:
             from .worker import decoded_duration
+
             duration = decoded_duration(source)
             nonce = uuid.uuid4().hex[:24]
-            remote = {'owner': owner, 'dataset': owner + '/chep-input-' + nonce,
-                      'kernel': owner + '/chep-run-' + nonce, 'stage': 'created',
-                      'source_sha256': sha(source), 'cleaned': False,
-                      'source_duration': duration, 'dual': duration >= DUAL_THRESHOLD_SECONDS,
-                      'model_dataset': model_dataset}
+            remote = {
+                'owner': owner,
+                'dataset': owner + '/chep-input-' + nonce,
+                'kernel': owner + '/chep-run-' + nonce,
+                'stage': 'created',
+                'source_sha256': sha(source),
+                'cleaned': False,
+                'source_duration': duration,
+                'dual': duration >= DUAL_THRESHOLD_SECONDS,
+                'model_dataset': model_dataset,
+            }
             # Persist IDs before any network mutation, including ambiguous timeouts.
             self.save(job_id, remote)
+
         work = self.store.root / 'work' / job_id
         work.mkdir(exist_ok=True)
         inputs, kernel, outputs = (work / name for name in ('input', 'kernel', 'results'))
         for path in (inputs, kernel, outputs):
             path.mkdir(exist_ok=True)
 
-        def stage(status, progress):
+        def stage(status: str, progress: float) -> None:
             with guard:
                 if stopped():
                     raise KaggleStopped()
                 self.store.update(job_id, status=status, progress=progress)
 
-        def run(args, timeout=120, check=True):
+        def run_cli(args: list[str], timeout: int = 120, check: bool = True) -> tuple[str, int]:
             return self.cli.run(args, timeout=timeout, stopped=stopped, check=check)
 
-        def wait(seconds):
-            end = time.monotonic() + seconds
-            while time.monotonic() < end:
-                if stopped():
-                    raise KaggleStopped()
-                time.sleep(.3)
+        def wait(seconds: float) -> None:
+            wait_cancellable(seconds, stopped)
 
-        if remote['stage'] == 'created':
-            stage('UPLOADING', .02)
-            # On restart, check the deterministic ID before attempting creation again.
-            output, code = run(['datasets', 'status', remote['dataset']], check=False)
-            if code:
-                audio = inputs / (job_id + '.audio')
-                if not audio.exists():
-                    try:
-                        os.link(source, audio)
-                    except OSError:
-                        shutil.copyfile(source, audio)
-                # A private dataset with 'other' license grants no new open license to user recordings.
-                atomic_json(inputs / 'dataset-metadata.json', {'id': remote['dataset'],
-                    'title': remote['dataset'].split('/')[1], 'licenses': [{'name': 'other'}]})
-                remote['dataset_attempted'] = True
-                self.save(job_id, remote)
-                run(['datasets', 'create', '-p', str(inputs)], timeout=3600)
-            remote['stage'] = 'dataset'
-            self.save(job_id, remote)
-        if remote['stage'] == 'dataset':
-            stage('UPLOADING', .10)
-            for attempt in range(120):
-                output, code = run(['datasets', 'status', remote['dataset']], check=False)
-                if not code and output.strip().lower() == 'ready':
-                    break
-                if not code and output.strip().lower() in ('error', 'failed'):
-                    remote['stage'] = 'failed'
-                    self.save(job_id, remote)
-                    raise ValueError('Kaggle could not prepare this dataset. Retry to upload a new private dataset.')
-                wait(5)
-            else:
-                raise ValueError('Kaggle is still preparing the dataset. Retry to resume.')
-            if remote.get('dual'):
-                remote['spans'] = shard_ranges(remote['source_duration'])
-                remote['kernels'] = [{'ref': remote['kernel'] + f'-{index}',
-                                      'attempted': False, 'cleaned': False, 'submitted': False}
-                                     for index in range(2)]
-                for index, entry in enumerate(remote['kernels']):
-                    folder = kernel / str(index)
-                    folder.mkdir(exist_ok=True)
-                    atomic_json(folder / 'run.ipynb', notebook(config, job_id, remote['source_sha256'],
-                        part_index=index, span=remote['spans'][index], source_duration=remote['source_duration']))
-                    atomic_json(folder / 'kernel-metadata.json', {'id': entry['ref'],
-                        'title': entry['ref'].split('/')[1], 'code_file': 'run.ipynb', 'language': 'python',
-                        'kernel_type': 'notebook', 'is_private': True, 'enable_gpu': True, 'enable_internet': True,
-                        'machine_shape': 'NvidiaTeslaT4', 'dataset_sources': [remote['dataset'], model_dataset],
-                        'competition_sources': [], 'kernel_sources': [], 'model_sources': []})
-                remote['stage'] = 'dual_submitting'
-                self.save(job_id, remote)
-            else:
-                if not remote.get('model_dataset'):
-                    remote['model_dataset'] = model_dataset
-                atomic_json(kernel / 'run.ipynb', notebook(config, job_id, remote['source_sha256']))
-                atomic_json(kernel / 'kernel-metadata.json', {'id': remote['kernel'],
-                    'title': remote['kernel'].split('/')[1], 'code_file': 'run.ipynb', 'language': 'python',
-                    'kernel_type': 'notebook', 'is_private': True, 'enable_gpu': True, 'enable_internet': True,
-                    'dataset_sources': [remote['dataset'], model_dataset], 'competition_sources': [], 'kernel_sources': [], 'model_sources': []})
-                remote['stage'] = 'submitting'
-                self.save(job_id, remote)
+        self._prepare_remote_inputs_and_bundles(
+            job_id, config, remote, source, inputs, kernel, model_dataset, stage, run_cli, wait
+        )
         if remote.get('dual'):
             try:
-                return self._run_dual(job_id, config, remote, source, work, kernel, outputs, stopped, guard)
+                self._run_dual(job_id, config, remote, source, work, kernel, outputs, stopped, guard)
+                return
             except KaggleStopped:
                 raise
             except (ValueError, KeyError, json.JSONDecodeError):
@@ -346,24 +298,88 @@ class KaggleBackend:
                 except Exception:
                     pass  # Retry retains exact owned IDs for another cleanup attempt.
                 raise
+
         if remote['stage'] == 'submitting':
             stage('WAITING_GPU', .15)
-            output, code = run(['kernels', 'status', remote['kernel']], check=False)
+            output, code = run_cli(['kernels', 'status', remote['kernel']], check=False)
             if code or not kernel_status(output):
                 # No blind automatic resubmission after timeout: saved stage is checked on Retry.
                 remote['kernel_attempted'] = True
                 self.save(job_id, remote)
-                run(['kernels', 'push', '-p', str(kernel), '--accelerator', 'NvidiaTeslaT4', '-t', '14400'], timeout=180)
+                run_cli(['kernels', 'push', '-p', str(kernel), '--accelerator', 'NvidiaTeslaT4', '-t', '14400'], timeout=180)
             remote['stage'] = 'submitted'
             remote['submitted_at'] = time.time()
             self.save(job_id, remote)
+
+        self._poll_single_kernel(job_id, remote, kernel, stage, run_cli, wait)
+        self._download_and_import_single(job_id, config, remote, source, outputs, guard, stopped, run_cli)
+
+    def _prepare_remote_inputs_and_bundles(
+        self,
+        job_id: str,
+        config: dict[str, Any],
+        remote: dict[str, Any],
+        source: Path,
+        inputs: Path,
+        kernel: Path,
+        model_dataset: str,
+        stage: Callable[[str, float], None],
+        run_cli: Callable[..., tuple[str, int]],
+        wait: Callable[[float], None],
+    ) -> None:
+        if remote['stage'] == 'created':
+            stage('UPLOADING', .02)
+            # On restart, check the deterministic ID before attempting creation again.
+            _, code = run_cli(['datasets', 'status', remote['dataset']], check=False)
+            if code:
+                prepare_audio_dataset_dir(inputs, source, job_id, remote['dataset'])
+                remote['dataset_attempted'] = True
+                self.save(job_id, remote)
+                run_cli(['datasets', 'create', '-p', str(inputs)], timeout=3600)
+            remote['stage'] = 'dataset'
+            self.save(job_id, remote)
+
+        if remote['stage'] == 'dataset':
+            stage('UPLOADING', .10)
+            dataset_state = wait_for_dataset_ready(remote['dataset'], run_cli, wait)
+            if dataset_state == 'failed':
+                remote['stage'] = 'failed'
+                self.save(job_id, remote)
+                raise ValueError('Kaggle could not prepare this dataset. Retry to upload a new private dataset.')
+            if dataset_state != 'ready':
+                raise ValueError('Kaggle is still preparing the dataset. Retry to resume.')
+            if remote.get('dual'):
+                remote['spans'] = shard_ranges(remote['source_duration'])
+                remote['kernels'] = [
+                    {'ref': remote['kernel'] + f'-{index}', 'attempted': False, 'cleaned': False, 'submitted': False}
+                    for index in range(2)
+                ]
+                write_dual_kernel_bundles(kernel, config, job_id, remote, model_dataset)
+                remote['stage'] = 'dual_submitting'
+                self.save(job_id, remote)
+            else:
+                if not remote.get('model_dataset'):
+                    remote['model_dataset'] = model_dataset
+                write_single_kernel_bundle(kernel, config, job_id, remote, model_dataset)
+                remote['stage'] = 'submitting'
+                self.save(job_id, remote)
+
+    def _poll_single_kernel(
+        self,
+        job_id: str,
+        remote: dict[str, Any],
+        kernel: Path,
+        stage: Callable[[str, float], None],
+        run_cli: Callable[..., tuple[str, int]],
+        wait: Callable[[float], None],
+    ) -> None:
         stage('WAITING_GPU', .20)
         failures = 0
         monitor = None
         try:
             while True:
                 try:
-                    output, _ = run(['kernels', 'status', remote['kernel']])
+                    output, _ = run_cli(['kernels', 'status', remote['kernel']])
                     failures = 0
                 except RuntimeError:
                     failures += 1
@@ -394,27 +410,59 @@ class KaggleBackend:
                     elif silent_startup_overdue(remote['running_since'], monitor):
                         monitor.close()
                         monitor = None
-                        entry = {'ref': remote['kernel'], 'attempted': remote.get('kernel_attempted'),
-                                 'cleaned': remote.get('kernel_cleaned'),
-                                 'running_since': remote['running_since'],
-                                 'startup_retries': remote.get('startup_retries', 0)}
-                        self._restart_silent_kernel(job_id, remote, entry, kernel, run)
+                        entry = {
+                            'ref': remote['kernel'],
+                            'attempted': remote.get('kernel_attempted'),
+                            'cleaned': remote.get('kernel_cleaned'),
+                            'running_since': remote['running_since'],
+                            'startup_retries': remote.get('startup_retries', 0),
+                        }
+                        self._restart_silent_kernel(job_id, remote, entry, kernel, run_cli)
                         stage('WAITING_GPU', .20)
                         continue
-                stage('REMOTE_RUNNING' if status == 'RUNNING' else 'WAITING_GPU',
-                      .35 if status == 'RUNNING' else .20)
+                stage('REMOTE_RUNNING' if status == 'RUNNING' else 'WAITING_GPU', .35 if status == 'RUNNING' else .20)
                 if time.time() - remote.get('submitted_at', time.time()) > 5 * 3600:
                     raise ValueError('Kaggle session is taking longer than expected. Retry to reconnect.')
                 wait(10)
         finally:
             if monitor is not None:
                 monitor.close()
-        stage('DOWNLOADING', .90)
-        run(['kernels', 'output', remote['kernel'], '-p', str(outputs), '--file-pattern',
-             rf'^(result\.json|{job_id}\.(txt|srt))$', '--force'], timeout=600)
+
+    def _download_and_import_single(
+        self,
+        job_id: str,
+        config: dict[str, Any],
+        remote: dict[str, Any],
+        source: Path,
+        outputs: Path,
+        guard: Any,
+        stopped: Callable[[], bool],
+        run_cli: Callable[..., tuple[str, int]],
+    ) -> None:
+        with guard:
+            if stopped():
+                raise KaggleStopped()
+            self.store.update(job_id, status='DOWNLOADING', progress=.90)
+        run_cli(
+            [
+                'kernels',
+                'output',
+                remote['kernel'],
+                '-p',
+                str(outputs),
+                '--file-pattern',
+                rf'^(result\.json|{job_id}\.(txt|srt))$',
+                '--force',
+            ],
+            timeout=600,
+        )
         try:
-            result = validate_result(outputs, job_id, remote['source_sha256'],
-                                     model_dataset=remote.get('model_dataset'))
+            result = validate_result(
+                outputs,
+                job_id,
+                remote['source_sha256'],
+                model_dataset=remote.get('model_dataset'),
+            )
             validate_model_profile(result, config)
         except ValueError:
             remote['stage'] = 'failed'
@@ -425,8 +473,15 @@ class KaggleBackend:
                 raise KaggleStopped()
             for ext in ('txt', 'srt'):
                 os.replace(outputs / (job_id + '.' + ext), self.store.root / 'outputs' / (job_id + '.' + ext))
-            self.store.update(job_id, status='COMPLETED', progress=1, duration=result['duration'],
-                              processed=result['duration'], profile=json.dumps(result['profile']), error=None)
+            self.store.update(
+                job_id,
+                status='COMPLETED',
+                progress=1,
+                duration=result['duration'],
+                processed=result['duration'],
+                profile=json.dumps(result['profile']),
+                error=None,
+            )
         remote['stage'] = 'imported'
         self.save(job_id, remote)
         source.unlink(missing_ok=True)
@@ -435,24 +490,29 @@ class KaggleBackend:
         except Exception:
             pass  # Result remains available; cleanup failure stays visible and retryable.
 
-    def _run_dual(self, job_id, config, remote, source, work, kernel, outputs, stopped, guard):
-        from .worker import stamp
-
-        def stage(status, progress):
+    def _run_dual(
+        self,
+        job_id: str,
+        config: dict[str, Any],
+        remote: dict[str, Any],
+        source: Path,
+        work: Path,
+        kernel: Path,
+        outputs: Path,
+        stopped: Callable[[], bool],
+        guard: Any,
+    ) -> None:
+        def stage(status: str, progress: float) -> None:
             with guard:
                 if stopped():
                     raise KaggleStopped()
                 self.store.update(job_id, status=status, progress=progress)
 
-        def run(args, timeout=120, check=True):
+        def run_cli(args: list[str], timeout: int = 120, check: bool = True) -> tuple[str, int]:
             return self.cli.run(args, timeout=timeout, stopped=stopped, check=check)
 
-        def wait(seconds):
-            end = time.monotonic() + seconds
-            while time.monotonic() < end:
-                if stopped():
-                    raise KaggleStopped()
-                time.sleep(.3)
+        def wait(seconds: float) -> None:
+            wait_cancellable(seconds, stopped)
 
         if remote['stage'] == 'dual_submitting':
             stage('WAITING_GPU', .15)
@@ -460,14 +520,25 @@ class KaggleBackend:
                 if entry.get('submitted'):
                     continue
                 if entry.get('attempted'):
-                    output, code = run(['kernels', 'status', entry['ref']], check=False)
+                    output, code = run_cli(['kernels', 'status', entry['ref']], check=False)
                     if code or not kernel_status(output):
                         raise ValueError('Kaggle submission status is uncertain. Retry after checking cleanup.')
                 else:
                     entry['attempted'] = True
                     self.save(job_id, remote)
-                    run(['kernels', 'push', '-p', str(kernel / str(index)),
-                         '--accelerator', 'NvidiaTeslaT4', '-t', '14400'], timeout=180)
+                    run_cli(
+                        [
+                            'kernels',
+                            'push',
+                            '-p',
+                            str(kernel / str(index)),
+                            '--accelerator',
+                            'NvidiaTeslaT4',
+                            '-t',
+                            '14400',
+                        ],
+                        timeout=180,
+                    )
                 entry['submitted'] = True
                 self.save(job_id, remote)
             remote['stage'] = 'dual_submitted'
@@ -476,16 +547,29 @@ class KaggleBackend:
 
         if remote['stage'] != 'dual_submitted':
             raise ValueError('Invalid dual-notebook session state.')
+
+        self._poll_dual_kernels(job_id, remote, kernel, stage, run_cli, wait)
+        self._download_and_import_dual(job_id, config, remote, source, work, outputs, stage, guard, stopped, run_cli)
+
+    def _poll_dual_kernels(
+        self,
+        job_id: str,
+        remote: dict[str, Any],
+        kernel: Path,
+        stage: Callable[[str, float], None],
+        run_cli: Callable[..., tuple[str, int]],
+        wait: Callable[[float], None],
+    ) -> None:
         pending = {index for index, entry in enumerate(remote['kernels']) if not entry.get('complete')}
         failures = 0
-        monitors = {}
+        monitors: dict[int, Any] = {}
         try:
             while pending:
                 any_running = False
                 for index in sorted(pending):
                     entry = remote['kernels'][index]
                     try:
-                        output, _ = run(['kernels', 'status', entry['ref']])
+                        output, _ = run_cli(['kernels', 'status', entry['ref']])
                         failures = 0
                     except RuntimeError:
                         failures += 1
@@ -523,8 +607,9 @@ class KaggleBackend:
                                 monitors.pop(index).close()
                             elif silent_startup_overdue(entry['running_since'], monitor):
                                 monitors.pop(index).close()
-                                self._restart_silent_kernel(job_id, remote, entry,
-                                    kernel / str(index), run, index=index)
+                                self._restart_silent_kernel(
+                                    job_id, remote, entry, kernel / str(index), run_cli, index=index
+                                )
                     elif status is None:
                         raise ValueError('Kaggle returned an unknown shard status. Retry to reconnect.')
                 if pending:
@@ -536,6 +621,19 @@ class KaggleBackend:
             for monitor in monitors.values():
                 monitor.close()
 
+    def _download_and_import_dual(
+        self,
+        job_id: str,
+        config: dict[str, Any],
+        remote: dict[str, Any],
+        source: Path,
+        work: Path,
+        outputs: Path,
+        stage: Callable[[str, float], None],
+        guard: Any,
+        stopped: Callable[[], bool],
+        run_cli: Callable[..., tuple[str, int]],
+    ) -> None:
         stage('DOWNLOADING', .90)
         results = []
         shards = []
@@ -543,11 +641,29 @@ class KaggleBackend:
             folder = outputs / str(index)
             folder.mkdir(exist_ok=True)
             stem = f'{job_id}-{index}'
-            run(['kernels', 'output', entry['ref'], '-p', str(folder), '--file-pattern',
-                 rf'^(result\.json|{stem}\.(txt|srt|segments\.json))$', '--force'], timeout=600)
-            result = validate_result(folder, job_id, remote['source_sha256'], stem=stem,
-                part_index=index, span=remote['spans'][index],
-                source_duration=remote['source_duration'], model_dataset=remote['model_dataset'])
+            run_cli(
+                [
+                    'kernels',
+                    'output',
+                    entry['ref'],
+                    '-p',
+                    str(folder),
+                    '--file-pattern',
+                    rf'^(result\.json|{stem}\.(txt|srt|segments\.json))$',
+                    '--force',
+                ],
+                timeout=600,
+            )
+            result = validate_result(
+                folder,
+                job_id,
+                remote['source_sha256'],
+                stem=stem,
+                part_index=index,
+                span=remote['spans'][index],
+                source_duration=remote['source_duration'],
+                model_dataset=remote['model_dataset'],
+            )
             validate_model_profile(result, config)
             segment_path = folder / (stem + '.segments.json')
             if segment_path.stat().st_size > 64 * 1024**2:
@@ -556,9 +672,7 @@ class KaggleBackend:
             results.append(result)
         segments, audit = merge_segments(shards, remote['spans'])
         atomic_json(work / 'seam-audit.json', {'overlap_seconds': 5, 'removed': audit})
-        text = ''.join(f"[{stamp(s['start'])} - {stamp(s['end'])}] {s['text']}\n" for s in segments)
-        srt = ''.join(f"{number}\n{stamp(s['start'], True)} --> {stamp(s['end'], True)}\n{s['text']}\n\n"
-                      for number, s in enumerate(segments, 1))
+        text, srt = format_merged_transcripts(segments)
         with guard:
             if stopped():
                 raise KaggleStopped()
@@ -566,11 +680,21 @@ class KaggleBackend:
                 temporary = outputs / (job_id + '.' + extension + '.part')
                 temporary.write_text(content, encoding='utf-8')
                 os.replace(temporary, self.store.root / 'outputs' / (job_id + '.' + extension))
-            profile = {**results[0]['profile'], 'dual_notebook': True,
-                       'overlap_seconds': 5, 'model_dataset': remote['model_dataset']}
-            self.store.update(job_id, status='COMPLETED', progress=1,
-                              duration=remote['source_duration'], processed=remote['source_duration'],
-                              profile=json.dumps(profile), error=None)
+            profile = {
+                **results[0]['profile'],
+                'dual_notebook': True,
+                'overlap_seconds': 5,
+                'model_dataset': remote['model_dataset'],
+            }
+            self.store.update(
+                job_id,
+                status='COMPLETED',
+                progress=1,
+                duration=remote['source_duration'],
+                processed=remote['source_duration'],
+                profile=json.dumps(profile),
+                error=None,
+            )
         remote['stage'] = 'imported'
         self.save(job_id, remote)
         source.unlink(missing_ok=True)

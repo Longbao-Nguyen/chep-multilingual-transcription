@@ -12,6 +12,8 @@ data/
 benchmarks/
 docs/*
 !docs/kaggle-optimization-benchmarks.md
+!docs/assets/
+!docs/assets/app-screenshot.png
 
 # Private coding-agent reference; never force-add or publish.
 /PROJECT_SPEC.md

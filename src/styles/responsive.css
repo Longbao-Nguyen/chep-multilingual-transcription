@@ -1,0 +1,292 @@
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .guide-drawer[open] {
+    animation: none;
+  }
+}
+
+@media (min-width: 1500px) {
+  .content {
+    padding-top: 55px;
+  }
+
+  .upload-card {
+    padding-top: 43px;
+    padding-bottom: 35px;
+  }
+
+  .workspace-grid {
+    grid-template-columns: minmax(0, 1fr) 310px;
+  }
+}
+
+@media (max-width: 1150px) {
+  .sidebar {
+    width: 205px;
+    padding: 28px 18px;
+  }
+
+  .main-shell {
+    margin-left: 205px;
+  }
+
+  .content {
+    padding: 30px 25px;
+  }
+
+  .topbar {
+    padding: 0 25px;
+  }
+
+  .workspace-grid {
+    grid-template-columns: minmax(0, 1fr) 245px;
+    gap: 17px;
+  }
+
+  h1 {
+    font-size: 30px;
+  }
+
+  .job-heading {
+    gap: 4px;
+  }
+
+  .job {
+    padding: 16px 14px;
+  }
+
+  .job-actions {
+    gap: 4px;
+  }
+
+  .job-actions .small-button {
+    padding: 6px;
+  }
+
+  .section-heading {
+    padding: 18px 14px;
+  }
+}
+
+@media (max-width: 950px) {
+  .workspace-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .details-column {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .info-card {
+    margin-top: 0;
+  }
+
+  .engine-card,
+  .info-card {
+    padding: 16px;
+  }
+
+  .engine-card h2 {
+    margin-top: 15px;
+  }
+
+  .card-kicker {
+    font-size: 8px;
+  }
+
+  .engine-stats {
+    margin: 13px 0;
+  }
+
+  .engine-reason {
+    font-size: 10px;
+  }
+}
+
+@media (min-width: 951px) {
+  .workspace-grid {
+    grid-template-columns: minmax(0, 1fr) 305px;
+  }
+}
+
+@media (min-width: 701px) and (max-width: 950px) {
+  .details-column {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .storage-card {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 700px) {
+  .sidebar {
+    position: static;
+    width: 100%;
+    padding: 18px 20px;
+  }
+
+  .app-shell {
+    display: block;
+  }
+
+  .brand {
+    font-size: 12px;
+  }
+
+  .brand strong {
+    font-size: 18px;
+  }
+
+  .brand br {
+    display: none;
+  }
+
+  .brand-mark {
+    width: 35px;
+    height: 35px;
+  }
+
+  .edition,
+  .sidebar-note {
+    display: none;
+  }
+
+  .sidebar-footer {
+    display: flex;
+  }
+
+  nav {
+    display: flex;
+    flex-wrap: wrap;
+    margin-top: 16px;
+    gap: 7px;
+  }
+
+  .sidebar nav {
+    margin-top: 16px;
+  }
+
+  nav button {
+    padding: 9px;
+    font-size: 12px;
+    gap: 7px;
+  }
+
+  nav button span {
+    display: none;
+  }
+
+  .main-shell {
+    margin-left: 0;
+  }
+
+  .topbar {
+    height: 55px;
+    gap: 8px;
+    padding: 0 12px;
+  }
+
+  .topbar > div {
+    font-size: 10px;
+    gap: 5px;
+  }
+
+  .topbar-actions {
+    gap: 6px !important;
+  }
+
+  .topbar-actions .small-button {
+    padding: 6px;
+    font-size: 10px;
+  }
+
+  .local-pill {
+    font-size: 9px !important;
+  }
+
+  .content {
+    padding: 24px 18px;
+  }
+
+  .heading-symbol {
+    display: none;
+  }
+
+  h1 {
+    font-size: 28px;
+  }
+
+  .page-heading p {
+    font-size: 11px;
+  }
+
+  .details-column {
+    grid-template-columns: 1fr;
+  }
+
+  .engine-card,
+  .info-card {
+    padding: 20px;
+  }
+
+  .section-heading {
+    flex-wrap: wrap;
+  }
+
+  .job {
+    flex-wrap: wrap;
+  }
+
+  .job-actions {
+    margin-left: auto;
+  }
+
+  .privacy-note {
+    line-height: 1.7;
+    align-items: flex-start;
+  }
+
+  .content-footer span:last-child {
+    display: none;
+  }
+
+  .settings-card {
+    padding: 22px;
+  }
+
+  .goodbye h1 {
+    font-size: 26px;
+  }
+
+  .sidebar-storage {
+    margin-top: 18px;
+  }
+
+  .kaggle-account {
+    margin-bottom: 12px;
+  }
+}
+
+@media (max-width: 600px) {
+  .guide-drawer > header {
+    padding: 18px 20px;
+  }
+
+  .guide-content {
+    padding: 4px 20px 24px;
+  }
+
+  .guide-trigger {
+    padding: 8px 10px;
+    font-size: 11px;
+  }
+}

@@ -1,0 +1,16 @@
+:root {
+  --font-sans: Inter, "Segoe UI", sans-serif;
+  --color-ink: #233c34;
+  --color-bg: #f7f8f5;
+  --color-surface: #fff;
+  --color-focus: #d59a63;
+  --color-sidebar-bg: #172e28;
+  --color-sidebar-ink: #e4eee8;
+
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  background: var(--color-bg);
+  font-synthesis: none;
+  font-size: 14px;
+  line-height: 1.5;
+}

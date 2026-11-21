@@ -5,13 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from scripts.kaggle_optimization.core import (boundary_issues, chunk_aligned_ranges, compare_segments, discover, edit_distance, errors, gpu_valid, invalid_reasons,
+from scripts.benchmarks.kaggle_optimization.core import (boundary_issues, chunk_aligned_ranges, compare_segments, discover, edit_distance, errors, gpu_valid, invalid_reasons,
                                              merge, ranges, save, sha, validate_model)
-from scripts.kaggle_optimization.cli import append_trial, cleanup, execute, notebook, prepare, read, report
+from scripts.benchmarks.kaggle_optimization.cli import append_trial, cleanup, execute, notebook, prepare, read, report
 
 
 def test_artifacts_and_nested_mount(tmp_path):
-    path = tmp_path / 'datasets' / 'longnj' / 'french-whisper-ct2'
+    path = tmp_path / 'datasets' / 'french-transcript' / 'french-whisper-ct2'
     path.mkdir(parents=True)
     (path / 'model.bin').write_bytes(b'model')
     files = {'model.bin': {'size': 5, 'sha256': sha(path / 'model.bin')}}
@@ -145,7 +145,7 @@ def make_plan(tmp_path, duration=3600):
     audio = tmp_path / 'audio.wav'
     audio.write_bytes(b'fixture')
     out = tmp_path / 'experiment'
-    prepare(argparse.Namespace(hypothesis='H1', model_dataset='longnj/french-whisper-ct2/1',
+    prepare(argparse.Namespace(hypothesis='H1', model_dataset='french-transcript/french-whisper-ct2/1',
             duration=duration, overlap=5, output=out, audio=audio, owner='tester', repeats=3))
     return out, read(out/'plan.json')
 
@@ -232,7 +232,7 @@ def test_h2_controller_lifecycle_with_fake_remote(tmp_path, monkeypatch):
                 save(path/'result.json', result)
             return '', 0
     monkeypatch.setattr('local_app.kaggle_cli.KaggleCLI', FakeCLI)
-    monkeypatch.setattr('scripts.kaggle_optimization.cli.time.sleep', lambda _: None)
+    monkeypatch.setattr('scripts.benchmarks.kaggle_optimization.cli.time.sleep', lambda _: None)
     execute(argparse.Namespace(directory=out, cli_root=tmp_path, gpu_eligibility_confirmed=True, reference=None))
     assert len(submitted) == 9
     assert len(deleted) == 15  # 9 kernels and 6 private audio datasets

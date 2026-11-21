@@ -144,13 +144,13 @@ invalidates the run. Offline wheels are not part of this experiment.
 
 ```powershell
 $cliRoot = "$env:LOCALAPPDATA\FrenchTranscriptLocal\data"
-python -m scripts.kaggle_optimization.cli report test-results/kaggle-optimization/h2-21m-longnj
-python -m scripts.kaggle_optimization.cli report test-results/kaggle-optimization/h2-12m-longnj
+python -m scripts.benchmarks.kaggle_optimization.cli report test-results/kaggle-optimization/h2-21m-longnj
+python -m scripts.benchmarks.kaggle_optimization.cli report test-results/kaggle-optimization/h2-12m-longnj
 python -m pytest -q -p no:cacheprovider tests/test_kaggle_optimization.py tests/test_kaggle.py tests/test_kaggle_gpu.py
 ```
 
 To reproduce an H2 run in a **new, explicitly authorized experiment**, first generate
-lossless clips with `python -m scripts.kaggle_optimization.threshold_clips --source
+lossless clips with `python -m scripts.benchmarks.kaggle_optimization.threshold_clips --source
 test-results/kaggle-optimization/decoded.wav --output
 test-results/kaggle-optimization/threshold-audio --minutes 12 21`. Then use
 `cli prepare --hypothesis H2 --overlap 5 --repeats 3 --audio <clip> --duration
@@ -278,17 +278,19 @@ loading it; a missing, inaccessible or modified Dataset fails explicitly instead
 silently falling back to a Hugging Face download. Kaggle states that
 [anyone can access public Datasets](https://www.kaggle.com/docs/notebooks#collaborating-on-datasets),
 including from notebooks owned by another account. Tests exercise that separation
-with a job owner different from `longnj`.
+with a job owner different from the model Dataset owner (`french-transcript`).
 
-The pinned public versions are `longnj/french-whisper-ct2/1`,
-`longnj/english-whisper-ct2/1`, `longnj/spanish-whisper-ct2/1`,
-`longnj/german-whisper-ct2/1`, and `longnj/vietnamese-whisper-ct2/1`.
+The pinned public versions are `french-transcript/french-whisper-ct2/1`,
+`french-transcript/english-whisper-ct2/1`, `french-transcript/spanish-whisper-ct2/1`,
+`french-transcript/german-whisper-ct2/1`, and `french-transcript/vietnamese-whisper-ct2/1`,
+hosted under the [Chep-Transcript](https://www.kaggle.com/organizations/french-transcript/)
+Kaggle organization (`french-transcript`).
+The initial 2026-10-14 publication and smoke checks were recorded under `longnj`
+(see `test-results/model-publication/verification.json`) before migrating the public
+model Datasets to the `french-transcript` organization with identical version 1 model
+files and `isPrivate=false`.
 The four non-French Datasets were published from SHA-256-verified model files.
-The verification record at `test-results/model-publication/verification.json`
-confirms that all five are publicly listed, ready, contain the pinned model
-files, and expose anonymous HTTP metadata with `isPrivate=false` and version 1.
-This establishes public visibility without using `longnj` credentials for the
-HTTP check. It does not substitute for a live notebook run under a second
+That historical check does not substitute for a live notebook run under a second
 account; no second GPU-capable account was available.
 
 The worker counts decoded 16 kHz samples before submission. Recordings **shorter
@@ -359,7 +361,7 @@ Across all 20 notebooks, the mean observed lower bound was **23.922 s** (Rdv 24.
 
 The large difference between the 6–12-second *persisted log-event time fields* and some 52–64-second *wall-clock RUNNING-to-live-log intervals* shows why the earlier log-field average of 7.269 seconds was not a startup estimate. This experiment confirms that Kaggle can expose `RUNNING` well before its live API delivers the first line in this app flow. It does not by itself prove whether the remaining gap is Kaggle worker/cell scheduling, work before the warning, or log-stream delivery. A browser comparison and an immediate flushed cell-start marker would separate those possibilities.
 
-All 20 valid notebooks reached the attach-confirmed file and log with Tesla T4 and matching source/model identity. All 20 notebooks and ten private audio Datasets were deleted. One additional Rdv trial was excluded because Kaggle SDK output retrieval hit Windows cp1252 encoding; both notebooks and its Dataset were also deleted. The rerun used UTF-8 and passed. Final `longnj` inventory showed **zero notebooks** and only the five required public model Datasets. Raw UTC times, status observations, live-log receipt times, event fields, attach checks and cleanup flags are in gitignored `test-results/kaggle-startup/running-live-2026-10-16/results.json`; the reproducible harness is `scripts/kaggle_app_startup_benchmark.py`.
+All 20 valid notebooks reached the attach-confirmed file and log with Tesla T4 and matching source/model identity. All 20 notebooks and ten private audio Datasets were deleted. One additional Rdv trial was excluded because Kaggle SDK output retrieval hit Windows cp1252 encoding; both notebooks and its Dataset were also deleted. The rerun used UTF-8 and passed. Final `longnj` inventory showed **zero notebooks** and only the five required public model Datasets. Raw UTC times, status observations, live-log receipt times, event fields, attach checks and cleanup flags are in gitignored `test-results/kaggle-startup/running-live-2026-10-16/results.json`; the reproducible harness is `scripts/benchmarks/kaggle_app_startup_benchmark.py`.
 
 ### Kaggle account cleanup
 

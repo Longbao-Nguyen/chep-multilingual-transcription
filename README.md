@@ -13,7 +13,7 @@ The work progressed from French Whisper experiments to distilled models running 
 - **Five languages:** French, English, Spanish, German and Vietnamese, each with a pinned model and its own execution policy.
 - **Your choice of compute:** local NVIDIA CUDA GPU, CPU, or your own Kaggle GPU account. No Chep subscription or paid inference API; Kaggle quotas and availability apply.
 - **Local privacy:** local modes keep recordings and transcripts on your computer and work offline after asset setup. Online mode uploads audio to private Kaggle resources and attempts cleanup after verified results return.
-- **Kaggle model attachment:** online notebooks attach versioned public model Datasets owned by `longnj`; each signed-in user's recording remains in a private Dataset under that user's own account. For audio shorter than 21 minutes Chep uses one notebook; from 21 minutes it uses two notebooks with 5 seconds of shared audio and a conservative seam merge. Actual GPU access still depends on the user's Kaggle account and quota.
+- **Kaggle model attachment:** online notebooks attach versioned public model Datasets owned by the [Chep-Transcript](https://www.kaggle.com/organizations/french-transcript/) Kaggle organization (`french-transcript`); each signed-in user's recording remains in a private Dataset under that user's own account. For audio shorter than 21 minutes Chep uses one notebook; from 21 minutes it uses two notebooks with 5 seconds of shared audio and a conservative seam merge. Actual GPU access still depends on the user's Kaggle account and quota.
 - **Measured execution profiles:** precision and concurrent chunk workers selected from benchmark evidence, with local compatibility probes and CPU fallback.
 - **Persistent workflow:** sequential file queue, per-file cancellation, interruption/retry, History and TXT/SRT export.
 
@@ -42,7 +42,7 @@ npm.cmd run build
 For tests, install `requirements-dev.txt` and run `python -m pytest -q` using that environment. To package an `.exe`, install Inno Setup 6 and use its actual compiler path:
 
 ```powershell
-.\.venv\Scripts\python.exe scripts/build_windows.py --iscc 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+.\.venv\Scripts\python.exe scripts/build/build_windows.py --iscc 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 ```
 
 Output: `release/Chep-Setup-0.7.0-win-x64.exe`.
@@ -58,7 +58,7 @@ Output: `release/Chep-Setup-0.7.0-win-x64.exe`.
 
 **Device and model choices are captured when each file is added.** To change an existing queued file's choices, remove and re-add that file.
 
-![Chep interface annotated with the User Guide and four transcription steps](image.png)
+![Chep interface annotated with the User Guide and four transcription steps](docs/assets/app-screenshot.png)
 
 ## Performance & Benchmarks
 
