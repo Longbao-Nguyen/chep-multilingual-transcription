@@ -1,6 +1,15 @@
 """Generate a private, CPU-only Kaggle conversion notebook from pinned evidence."""
+import argparse
 import json
+import os
+import re
 from pathlib import Path
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--owner', default=os.environ.get('CHEP_KAGGLE_OWNER'), help='Kaggle username owning the release notebook (or set CHEP_KAGGLE_OWNER).')
+args = parser.parse_args()
+if not args.owner or not re.fullmatch(r'[a-zA-Z0-9_-]+', args.owner):
+    parser.error('Provide --owner <kaggle-username> or set CHEP_KAGGLE_OWNER.')
 
 root = Path(__file__).resolve().parents[2]
 folder = root/'benchmarks/ct2_release'
@@ -15,7 +24,7 @@ cell += "subprocess.run([sys.executable,'/kaggle/working/convert.py'],check=True
 notebook = {'nbformat':4,'nbformat_minor':5,'metadata':{'kernelspec':{'display_name':'Python 3','language':'python','name':'python3'}},
             'cells':[{'id':'ct2-release','cell_type':'code','metadata':{},'source':cell.splitlines(True),'outputs':[],'execution_count':None}]}
 (folder/'convert.ipynb').write_text(json.dumps(notebook),encoding='utf-8')
-metadata = {'id':'longnj/chep-ct2-release','title':'Chep CT2 Release','code_file':'convert.ipynb','language':'python',
+metadata = {'id':f'{args.owner}/chep-ct2-release','title':'Chep CT2 Release','code_file':'convert.ipynb','language':'python',
     'kernel_type':'notebook','is_private':'true','enable_gpu':'false','enable_internet':'true',
     'dataset_sources':[],'competition_sources':[],'kernel_sources':[],'model_sources':[]}
 (folder/'kernel-metadata.json').write_text(json.dumps(metadata,indent=2),encoding='utf-8')

@@ -45,6 +45,11 @@ def main() -> None:
         required=True,
         choices=["check", "fleurs", "longform", "fr-wave3a", "fr-dual", "summarize", "cleanup", "all"],
     )
+    parser.add_argument(
+        "--owner",
+        default=None,
+        help="Kaggle username owning benchmark kernels; falls back to CHEP_KAGGLE_OWNER / KAGGLE_USERNAME / kaggle.json.",
+    )
     args = parser.parse_args()
 
     if args.step == "check":
@@ -52,18 +57,18 @@ def main() -> None:
         return
 
     if args.step in ("fleurs", "all"):
-        submit_and_wait_wave(build_fleurs_wave_specs(), max_wait_s=7200, sequential=True)
+        submit_and_wait_wave(build_fleurs_wave_specs(), max_wait_s=7200, sequential=True, owner=args.owner)
 
     if args.step in ("longform", "all"):
-        submit_and_wait_wave(build_longform_wave_specs(), max_wait_s=9000, sequential=True)
+        submit_and_wait_wave(build_longform_wave_specs(), max_wait_s=9000, sequential=True, owner=args.owner)
 
     if args.step in ("fr-wave3a", "all"):
-        submit_and_wait_wave([build_fr_pt_spec(), build_fr_ct2_spec()], max_wait_s=10800, sequential=True)
+        submit_and_wait_wave([build_fr_pt_spec(), build_fr_ct2_spec()], max_wait_s=10800, sequential=True, owner=args.owner)
 
     if args.step in ("fr-dual", "all"):
         specs = build_fr_dual_specs()
         for attempt in range(1, 3):
-            submit_and_wait_wave(specs, max_wait_s=3600, queued_timeout_s=180, sequential=False)
+            submit_and_wait_wave(specs, max_wait_s=3600, queued_timeout_s=180, sequential=False, owner=args.owner)
             import json
             d0 = json.loads((specs[0].out_dir / "result.json").read_text(encoding="utf-8"))
             d1 = json.loads((specs[1].out_dir / "result.json").read_text(encoding="utf-8"))
@@ -79,7 +84,7 @@ def main() -> None:
         write_full_summary()
 
     if args.step in ("cleanup", "all"):
-        cleanup_ledger()
+        cleanup_ledger(owner=args.owner)
         out, _ = run_kaggle(["kernels", "list", "--mine", "--page-size", "50"], check=False)
         leftovers = [line for line in out.splitlines() if "chep-eval-" in line]
         print("Remaining campaign kernels:", leftovers)

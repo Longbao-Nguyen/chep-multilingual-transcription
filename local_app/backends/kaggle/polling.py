@@ -5,7 +5,7 @@ import re
 import time
 from typing import Any, Callable
 
-from .kaggle_cli import KaggleStopped
+from .cli import KaggleStopped
 
 DEFAULT_FIRST_LOG_TIMEOUT_SECONDS = 120
 DEFAULT_FIRST_LOG_RECONNECT_GRACE_SECONDS = 10

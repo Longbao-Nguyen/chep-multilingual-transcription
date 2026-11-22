@@ -17,7 +17,7 @@ env.update(USERPROFILE=str(data / 'profile'), KAGGLE_CONFIG_DIR=str(data / 'prof
 code = '''import sys, json
 from pathlib import Path
 sys.path.insert(0, sys.argv[1])
-from local_app.kaggle_cli import KaggleCLI
+from local_app.backends.kaggle.cli import KaggleCLI
 cli = KaggleCLI(Path(sys.argv[2]))
 cli.external = None
 assert not cli.installed

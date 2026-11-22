@@ -9,16 +9,12 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from .backends.colab import ColabBackend, ColabGpuCheck, ColabStopped
+from .backends.kaggle import KaggleBackend, KaggleGpuCheck, KaggleStopped, MAX_REMOTE_BYTES
 from .catalog import is_validated, selection
 from .cleanup_manager import CleanupManager
-from .colab_backend import ColabBackend
-from .colab_cli import ColabStopped
-from .colab_gpu import ColabGpuCheck
 from .components import Components
 from .hardware import detect
-from .kaggle_backend import KaggleBackend, MAX_REMOTE_BYTES
-from .kaggle_cli import KaggleStopped
-from .kaggle_gpu import KaggleGpuCheck
 from .local_runner import run_local_job
 from .models import ModelRegistry
 from .processes import WorkerJob

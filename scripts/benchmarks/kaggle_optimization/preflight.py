@@ -6,8 +6,8 @@ import uuid
 from pathlib import Path
 from .core import save
 from .cli import cleanup
-from local_app.kaggle_cli import KaggleCLI
-from local_app.kaggle_backend import kernel_status
+from local_app.backends.kaggle.cli import KaggleCLI
+from local_app.backends.kaggle.backend import kernel_status
 
 
 def main():

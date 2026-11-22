@@ -23,8 +23,8 @@ def digest(value):
 
 
 def prepare(args):
-    if args.hypothesis == 'H1' and not re.fullmatch(r'(?:french-transcript|longnj)/french-whisper-ct2/[1-9][0-9]*', args.model_dataset or ''):
-        raise ValueError('H1 requires --model-dataset french-transcript/french-whisper-ct2/VERSION')
+    if args.hypothesis == 'H1' and not re.fullmatch(r'[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+/[1-9][0-9]*', args.model_dataset or ''):
+        raise ValueError('H1 requires --model-dataset OWNER/DATASET/VERSION (e.g. french-transcript/french-whisper-ct2/1)')
     strategy = getattr(args, 'split_strategy', 'midpoint')
     ranges(args.duration, args.overlap if args.hypothesis == 'H2' and strategy == 'midpoint' else 0)
     if strategy == 'chunk-aligned' and (args.hypothesis != 'H2' or args.overlap != 0):
@@ -79,7 +79,7 @@ def notebook(plan, source, span):
 
 
 def cleanup(directory, cli):
-    from local_app.kaggle_backend import cleanup_response
+    from local_app.backends.kaggle.backend import cleanup_response
     ledger = read(directory / 'ownership.json')
     if cli.identity() != ledger['owner']:
         raise ValueError('Cleanup account mismatch')
@@ -97,8 +97,8 @@ def cleanup(directory, cli):
 
 
 def execute(args):
-    from local_app.kaggle_cli import KaggleCLI
-    from local_app.kaggle_backend import kernel_status
+    from local_app.backends.kaggle.cli import KaggleCLI
+    from local_app.backends.kaggle.backend import kernel_status
     from local_app.worker import stamp
     directory = args.directory.resolve()
     plan = read(directory / 'plan.json')
@@ -394,7 +394,7 @@ def main():
     elif args.command == 'append':
         append_trial(args.directory, args.arm)
     else:
-        from local_app.kaggle_cli import KaggleCLI
+        from local_app.backends.kaggle.cli import KaggleCLI
         cleanup(args.directory, KaggleCLI(args.cli_root))
 
 

@@ -8,8 +8,8 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from .config import atomic_json
-from .kaggle_notebook import notebook
+from ...config import atomic_json
+from .notebook import notebook
 
 
 def sha(path: Path) -> str:
@@ -169,7 +169,7 @@ def write_dual_kernel_bundles(
 
 def format_merged_transcripts(segments: list[dict[str, Any]]) -> tuple[str, str]:
     """Render merged timestamped segments into TXT and SRT strings."""
-    from .worker import stamp
+    from ...worker import stamp
 
     text = ''.join(f"[{stamp(s['start'])} - {stamp(s['end'])}] {s['text']}\n" for s in segments)
     srt = ''.join(

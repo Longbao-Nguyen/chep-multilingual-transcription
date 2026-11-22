@@ -14,7 +14,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from local_app.catalog import LANGUAGES
-from local_app.kaggle_cli import KaggleCLI
+from local_app.backends.kaggle.cli import KaggleCLI
 
 
 def rows(output):

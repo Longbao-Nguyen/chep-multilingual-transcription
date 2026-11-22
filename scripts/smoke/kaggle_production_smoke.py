@@ -14,8 +14,8 @@ if str(ROOT) not in sys.path:
 
 from local_app.catalog import selection
 from local_app.config import prepare_data
-from local_app.kaggle_backend import KaggleBackend
-from local_app.kaggle_cli import KaggleCLI
+from local_app.backends.kaggle.backend import KaggleBackend
+from local_app.backends.kaggle.cli import KaggleCLI
 from local_app.store import Store
 
 

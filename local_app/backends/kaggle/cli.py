@@ -14,7 +14,7 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-from .config import ROOT, atomic_json
+from ...config import ROOT, atomic_json
 
 FLAGS = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
 

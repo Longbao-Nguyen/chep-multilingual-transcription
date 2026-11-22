@@ -25,8 +25,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from local_app.catalog import selection
-from local_app.kaggle_merge import shard_ranges
-from local_app.kaggle_notebook import notebook
+from local_app.backends.kaggle.merge import shard_ranges
+from local_app.backends.kaggle.notebook import notebook
 from local_app.worker import decoded_duration
 
 
@@ -374,6 +374,7 @@ def main():
     parser.add_argument("--rdv", type=Path, required=True)
     parser.add_argument("--b2", type=Path, required=True)
     parser.add_argument("--max-trials", type=int, default=10)
+    parser.add_argument("--owner", default=None, help="Expected Kaggle username; defaults to the authenticated Kaggle account.")
     parser.add_argument("--ui-observe", action="store_true",
                         help="Pause before each pair and after verification for live UI comparison")
     args = parser.parse_args()
@@ -386,8 +387,10 @@ def main():
     api = KaggleApi()
     api.authenticate()
     owner = api.get_config_value(api.CONFIG_NAME_USER)
-    if owner != "longnj":
-        raise ValueError(f"Unexpected Kaggle account: {owner}")
+    if not owner:
+        raise ValueError("Could not determine authenticated Kaggle username.")
+    if args.owner and owner != args.owner:
+        raise ValueError(f"Authenticated Kaggle account ({owner}) differs from --owner ({args.owner}).")
     config = selection("fr", "kaggle")
     model_dataset = config["model_config"]["kaggle_dataset"]
     sources = {"Rdv.m4a": args.rdv.resolve(), "b2.m4a": args.b2.resolve()}

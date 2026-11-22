@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from local_app.api import create_app
 from local_app.catalog import selection
 from local_app.config import prepare_data
-from local_app.kaggle_backend import KaggleBackend, cleanup_response
+from local_app.backends.kaggle.backend import KaggleBackend, cleanup_response
 from local_app.store import Store
 
 

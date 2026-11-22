@@ -8,8 +8,8 @@ import threading
 from pathlib import Path
 from typing import Any, Callable
 
-from .colab_backend import ColabBackend
-from .kaggle_backend import KaggleBackend
+from .backends.colab.backend import ColabBackend
+from .backends.kaggle.backend import KaggleBackend
 from .store import Store
 
 log = logging.getLogger(__name__)

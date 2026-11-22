@@ -14,156 +14,23 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from .catalog import resolve_artifact
-from .colab_cli import ColabCLI, ColabStopped, HELPER_AUTH_PREAMBLE
-from .colab_script import build_worker_script
-from .kaggle_artifacts import sha, validate_model_profile
-from .kaggle_errors import CleanupError
+from ...catalog import resolve_artifact
+from .cli import ColabCLI, ColabStopped
+from .helpers import (
+    download_results_helper,
+    exec_helper,
+    poll_status_helper,
+    refresh_session_helper,
+    unassign_helper,
+    upload_file_helper,
+)
+from .script import build_worker_script
+from ..kaggle.artifacts import sha, validate_model_profile
+from ..kaggle.errors import CleanupError
 
 MAX_REMOTE_BYTES = 2 * 1024**3
 UPLOAD_CHUNK_BYTES = 6 * 1024 * 1024
 log = logging.getLogger(__name__)
-
-
-def _refresh_session_helper() -> str:
-    return HELPER_AUTH_PREAMBLE + r"""
-import json, sys, uuid
-from colab_cli.client import Accelerator, Variant
-from colab_cli.state import SessionState
-
-payload = json.loads(sys.stdin.read())
-email, client = _load_colab_session(payload['fallback_token'])
-target_ep = payload.get('endpoint')
-allow_create = payload.get('allow_create', True)
-
-assignments = {a.endpoint: a for a in client.list_assignments()}
-if target_ep and target_ep in assignments:
-    info = assignments[target_ep].runtime_proxy_info
-    session = {
-        'owner': email,
-        'endpoint': target_ep,
-        'url': info.url,
-        'token': info.token,
-        'expires_at': info.expires_at().isoformat(),
-        'reused': True,
-    }
-elif target_ep and not allow_create:
-    raise RuntimeError('The Google Colab runtime disconnected. Retry to run on a new Colab GPU session.')
-else:
-    res = client.assign(uuid.uuid4(), variant=Variant.GPU, accelerator=Accelerator.T4)
-    info = res.runtime_proxy_info
-    session = {
-        'owner': email,
-        'endpoint': res.endpoint,
-        'url': info.url,
-        'token': info.token,
-        'expires_at': info.expires_at().isoformat(),
-        'reused': False,
-    }
-
-print('CHEP_COLAB_JSON:' + json.dumps(session), flush=True)
-"""
-
-
-def _upload_file_helper() -> str:
-    return r"""
-import json, sys
-from colab_cli.contents import ContentsClient
-from colab_cli.state import SessionState
-
-payload = json.loads(sys.stdin.read())
-s = SessionState(name='chep', token=payload['token'], url=payload['url'], endpoint=payload['endpoint'])
-client = ContentsClient(s)
-client.upload(payload['local_path'], payload['remote_path'])
-print('CHEP_COLAB_JSON:' + json.dumps({'ok': True}), flush=True)
-"""
-
-
-def _exec_helper() -> str:
-    return r"""
-import json, sys
-from colab_cli.runtime import ColabRuntime
-
-payload = json.loads(sys.stdin.read())
-runtime = ColabRuntime(payload['url'], payload['token'])
-try:
-    outputs = runtime.execute_code(payload['code'], timeout=float(payload.get('timeout', 60)))
-finally:
-    runtime.stop(shutdown_kernel=False)
-text = ''.join(o.get('text', '') for o in outputs if o.get('output_type') == 'stream')
-errors = [o.get('evalue', '') for o in outputs if o.get('output_type') == 'error']
-if errors:
-    raise RuntimeError('; '.join(errors))
-print('CHEP_COLAB_JSON:' + json.dumps({'ok': True, 'stdout': text}), flush=True)
-"""
-
-
-def _poll_status_helper() -> str:
-    return r"""
-import json, sys, tempfile
-from pathlib import Path
-from colab_cli.contents import ContentsClient
-from colab_cli.state import SessionState
-
-payload = json.loads(sys.stdin.read())
-s = SessionState(name='chep', token=payload['token'], url=payload['url'], endpoint=payload['endpoint'])
-client = ContentsClient(s)
-status_data = None
-with tempfile.TemporaryDirectory() as td:
-    dst = Path(td) / 'status.json'
-    try:
-        client.download(payload['status_path'], str(dst))
-        status_data = json.loads(dst.read_text(encoding='utf-8'))
-    except FileNotFoundError:
-        status_data = None
-print('CHEP_COLAB_JSON:' + json.dumps({'ok': True, 'status': status_data}), flush=True)
-"""
-
-
-def _download_results_helper() -> str:
-    return r"""
-import json, sys
-from pathlib import Path
-from colab_cli.contents import ContentsClient
-from colab_cli.state import SessionState
-
-payload = json.loads(sys.stdin.read())
-s = SessionState(name='chep', token=payload['token'], url=payload['url'], endpoint=payload['endpoint'])
-client = ContentsClient(s)
-out_dir = Path(payload['local_dir'])
-out_dir.mkdir(parents=True, exist_ok=True)
-for pair in payload['files']:
-    client.download(pair['remote'], str(out_dir / pair['name']))
-print('CHEP_COLAB_JSON:' + json.dumps({'ok': True}), flush=True)
-"""
-
-
-def _unassign_helper() -> str:
-    return HELPER_AUTH_PREAMBLE + r"""
-import json, sys
-from colab_cli.client import ColabRequestError
-from colab_cli.runtime import ColabRuntime
-from colab_cli.utils import get_status_code
-
-payload = json.loads(sys.stdin.read())
-email, client = _load_colab_session(payload['fallback_token'])
-ep = payload['endpoint']
-assignments = {a.endpoint: a for a in client.list_assignments()}
-if ep not in assignments:
-    print('CHEP_COLAB_JSON:' + json.dumps({'ok': True, 'missing': True}), flush=True)
-else:
-    info = assignments[ep].runtime_proxy_info
-    try:
-        ColabRuntime(info.url, info.token).stop(shutdown_kernel=True)
-    except Exception:
-        pass
-    try:
-        client.unassign(ep)
-    except ColabRequestError as exc:
-        if get_status_code(exc) != 404:
-            raise
-    print('CHEP_COLAB_JSON:' + json.dumps({'ok': True, 'missing': False}), flush=True)
-"""
 
 
 def validate_colab_result(directory: Path, job_id: str, source_hash: str) -> dict[str, Any]:
@@ -240,7 +107,7 @@ class ColabBackend:
                 self._warm.get('endpoint') if self._warm and self._warm.get('owner') == owner else None
             )
             session = self.cli.run_helper(
-                _refresh_session_helper(),
+                refresh_session_helper(),
                 {'endpoint': endpoint_hint, 'allow_create': allow_create},
                 timeout=180,
                 stopped=stopped,
@@ -258,7 +125,7 @@ class ColabBackend:
         if not target:
             return
         try:
-            self.cli.run_helper(_unassign_helper(), {'endpoint': target}, timeout=90)
+            self.cli.run_helper(unassign_helper(), {'endpoint': target}, timeout=90)
         except Exception:
             log.warning('Failed releasing Colab endpoint %s', target)
 
@@ -292,7 +159,7 @@ class ColabBackend:
                 if session_info:
                     self._remove_remote_job_dir(session_info, job_id)
                 else:
-                    self.cli.run_helper(_unassign_helper(), {'endpoint': endpoint}, timeout=90)
+                    self.cli.run_helper(unassign_helper(), {'endpoint': endpoint}, timeout=90)
                     with self._session_lock:
                         if self._warm and self._warm.get('endpoint') == endpoint:
                             self._warm = None
@@ -313,7 +180,7 @@ class ColabBackend:
         if not re.fullmatch(r'[a-f0-9]{32}', job_id):
             return
         self.cli.run_helper(
-            _exec_helper(),
+            exec_helper(),
             {
                 'url': session['url'],
                 'token': session['token'],
@@ -334,7 +201,7 @@ class ColabBackend:
     ) -> tuple[dict[str, Any], int]:
         remote_parts = f'/content/chep-job/{job_id}/parts'
         self.cli.run_helper(
-            _exec_helper(),
+            exec_helper(),
             {
                 'url': session['url'],
                 'token': session['token'],
@@ -358,7 +225,7 @@ class ColabBackend:
                     chunk_bytes = stream.read(UPLOAD_CHUNK_BYTES)
                     temp_chunk.write_bytes(chunk_bytes)
                     self.cli.run_helper(
-                        _upload_file_helper(),
+                        upload_file_helper(),
                         {
                             'url': session['url'],
                             'token': session['token'],
@@ -425,7 +292,7 @@ class ColabBackend:
                 session = self._ensure_session(owner, session['endpoint'], stopped=stopped, allow_create=False)
                 remote_script = f'/content/chep-job/{job_id}/run_colab_job.py'
                 self.cli.run_helper(
-                    _upload_file_helper(),
+                    upload_file_helper(),
                     {
                         'url': session['url'],
                         'token': session['token'],
@@ -442,7 +309,7 @@ class ColabBackend:
                     f"subprocess.Popen([sys.executable, {remote_script!r}], stdout=log_f, stderr=subprocess.STDOUT, start_new_session=True)\n"
                 )
                 self.cli.run_helper(
-                    _exec_helper(),
+                    exec_helper(),
                     {
                         'url': session['url'],
                         'token': session['token'],
@@ -473,7 +340,7 @@ class ColabBackend:
                     raise RuntimeError('Google Colab transcription timed out after 4 hours.')
                 session = self._ensure_session(owner, session['endpoint'], stopped=stopped, allow_create=False)
                 poll = self.cli.run_helper(
-                    _poll_status_helper(),
+                    poll_status_helper(),
                     {
                         'url': session['url'],
                         'token': session['token'],
@@ -504,7 +371,7 @@ class ColabBackend:
             results_dir = work_dir / 'results'
             session = self._ensure_session(owner, session['endpoint'], stopped=stopped, allow_create=False)
             self.cli.run_helper(
-                _download_results_helper(),
+                download_results_helper(),
                 {
                     'url': session['url'],
                     'token': session['token'],

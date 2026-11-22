@@ -10,7 +10,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from local_app.kaggle_merge import merge_segments  # noqa: E402
+from local_app.backends.kaggle.merge import merge_segments  # noqa: E402
 from scripts.benchmarks.full_eval.kaggle_runner import RESULTS_ROOT  # noqa: E402
 from scripts.benchmarks.full_eval.metrics import bootstrap_ci_pct, load_catalog, score_texts  # noqa: E402
 

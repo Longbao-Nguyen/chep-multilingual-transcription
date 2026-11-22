@@ -2,7 +2,7 @@ import json
 from unittest.mock import Mock
 
 from local_app.config import prepare_data
-from local_app.kaggle_gpu import KaggleGpuCheck
+from local_app.backends.kaggle.gpu import KaggleGpuCheck
 
 
 class FakeCLI:

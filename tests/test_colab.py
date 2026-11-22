@@ -9,14 +9,14 @@ from unittest.mock import Mock
 import pytest
 from fastapi.testclient import TestClient
 
-from local_app import colab_backend
+from local_app.backends.colab import backend as colab_backend
 from local_app.api import create_app
 from local_app.catalog import selection
 from local_app.cleanup_manager import CleanupManager
-from local_app.colab_backend import ColabBackend, MAX_REMOTE_BYTES, validate_colab_result
-from local_app.colab_cli import AUTH_URL_PREFIX, ColabCLI, ColabStopped, JSON_PREFIX, safe_error
-from local_app.colab_gpu import ColabGpuCheck
-from local_app.colab_script import build_worker_script
+from local_app.backends.colab.backend import ColabBackend, MAX_REMOTE_BYTES, validate_colab_result
+from local_app.backends.colab.cli import AUTH_URL_PREFIX, ColabCLI, ColabStopped, JSON_PREFIX, safe_error
+from local_app.backends.colab.gpu import ColabGpuCheck
+from local_app.backends.colab.script import build_worker_script
 from local_app.config import ROOT, prepare_data
 from local_app.store import Store
 
@@ -157,7 +157,7 @@ def test_colab_cli_oauth_code_flow_cancel_and_logout(colab_app, monkeypatch):
     client, engine = colab_app
     cli = engine.colab.cli
     cli.state.update(status='sign_in_required', username=None)
-    monkeypatch.setattr('local_app.colab_cli.webbrowser.open', lambda url: True)
+    monkeypatch.setattr('local_app.backends.colab.cli.webbrowser.open', lambda url: True)
 
     fake_helper = (
         'import json, sys\n'

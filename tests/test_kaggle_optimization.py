@@ -231,7 +231,7 @@ def test_h2_controller_lifecycle_with_fake_remote(tmp_path, monkeypatch):
                     result['files'][ext] = {'sha256': sha(f), 'size': f.stat().st_size}
                 save(path/'result.json', result)
             return '', 0
-    monkeypatch.setattr('local_app.kaggle_cli.KaggleCLI', FakeCLI)
+    monkeypatch.setattr('local_app.backends.kaggle.cli.KaggleCLI', FakeCLI)
     monkeypatch.setattr('scripts.benchmarks.kaggle_optimization.cli.time.sleep', lambda _: None)
     execute(argparse.Namespace(directory=out, cli_root=tmp_path, gpu_eligibility_confirmed=True, reference=None))
     assert len(submitted) == 9
@@ -248,3 +248,35 @@ def test_h2_controller_lifecycle_with_fake_remote(tmp_path, monkeypatch):
     append_trial(out, 'B')
     assert read(out/'plan.json')['fingerprint'] == original_fingerprint
     assert read(out/'plan.json')['trials'][-1]['id'] == '04-B'
+
+
+def test_prepare_accepts_custom_owner_dataset(tmp_path):
+    audio = tmp_path / 'audio.wav'
+    audio.write_bytes(b'fixture')
+    out = tmp_path / 'custom_exp'
+    prepare(argparse.Namespace(
+        hypothesis='H1',
+        model_dataset='someone/custom-model/2',
+        duration=3600,
+        overlap=5,
+        output=out,
+        audio=audio,
+        owner='someone',
+        repeats=3,
+    ))
+    plan = read(out / 'plan.json')
+    assert plan['owner'] == 'someone'
+    assert plan['model_dataset'] == 'someone/custom-model/2'
+
+
+def test_kaggle_runner_resolve_owner(tmp_path, monkeypatch):
+    from scripts.benchmarks.full_eval.kaggle_runner import resolve_owner
+
+    monkeypatch.delenv('CHEP_KAGGLE_OWNER', raising=False)
+    monkeypatch.delenv('KAGGLE_USERNAME', raising=False)
+    monkeypatch.setenv('KAGGLE_CONFIG_DIR', str(tmp_path / 'missing_kaggle_cfg'))
+    with pytest.raises(ValueError, match='--owner'):
+        resolve_owner()
+    assert resolve_owner('alice') == 'alice'
+    monkeypatch.setenv('CHEP_KAGGLE_OWNER', 'bob')
+    assert resolve_owner() == 'bob'

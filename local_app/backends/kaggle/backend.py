@@ -11,9 +11,9 @@ from contextlib import nullcontext
 from pathlib import Path
 from typing import Any, Callable
 
-from .catalog import resolve_artifact
-from .config import atomic_json
-from .kaggle_artifacts import (
+from ...catalog import resolve_artifact
+from ...config import atomic_json
+from .artifacts import (
     format_merged_transcripts,
     prepare_audio_dataset_dir,
     sha,
@@ -22,10 +22,10 @@ from .kaggle_artifacts import (
     write_dual_kernel_bundles,
     write_single_kernel_bundle,
 )
-from .kaggle_cli import KaggleCLI, KaggleStopped
-from .kaggle_errors import CleanupError, cleanup_failure, cleanup_response
-from .kaggle_merge import DUAL_THRESHOLD_SECONDS, merge_segments, shard_ranges
-from .kaggle_polling import (
+from .cli import KaggleCLI, KaggleStopped
+from .errors import CleanupError, cleanup_failure, cleanup_response
+from .merge import DUAL_THRESHOLD_SECONDS, merge_segments, shard_ranges
+from .polling import (
     DEFAULT_FIRST_LOG_RECONNECT_GRACE_SECONDS,
     DEFAULT_FIRST_LOG_TIMEOUT_SECONDS,
     MAX_FIRST_LOG_RETRIES,
@@ -245,7 +245,7 @@ class KaggleBackend:
             model_dataset = remote['model_dataset']
             config['model_config']['kaggle_dataset'] = model_dataset
         if not remote:
-            from .worker import decoded_duration
+            from ...worker import decoded_duration
 
             duration = decoded_duration(source)
             nonce = uuid.uuid4().hex[:24]

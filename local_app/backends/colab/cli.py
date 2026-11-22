@@ -17,7 +17,7 @@ import webbrowser
 from pathlib import Path
 from typing import Any
 
-from .config import ROOT, atomic_json
+from ...config import ROOT, atomic_json
 
 FLAGS = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
 JSON_PREFIX = 'CHEP_COLAB_JSON:'
@@ -44,163 +44,7 @@ def safe_error(output: str) -> str:
     return 'The Google Colab request failed. Check your connection and Colab account, then retry.'
 
 
-_PASSIVE_AUTH_HELPER = r"""
-import json, os, sys, urllib.parse, urllib.request
-from pathlib import Path
-
-payload = json.loads(sys.stdin.readline())
-fallback = Path(payload['fallback_token'])
-result = {'authenticated': False, 'email': None}
-
-import colab_cli.auth as auth
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-
-creds = None
-source = None
-try:
-    token_json = auth._get_token_from_keyring()
-    if token_json:
-        creds = Credentials.from_authorized_user_info(json.loads(token_json), auth.PUBLIC_SCOPES)
-        source = 'keyring'
-except Exception:
-    creds = None
-
-if not creds and fallback.is_file():
-    try:
-        creds = Credentials.from_authorized_user_file(str(fallback), auth.PUBLIC_SCOPES)
-        source = 'fallback'
-    except Exception:
-        creds = None
-
-if not creds and os.path.exists(auth.LEGACY_TOKEN_PATH):
-    try:
-        creds = Credentials.from_authorized_user_file(auth.LEGACY_TOKEN_PATH, auth.PUBLIC_SCOPES)
-        source = 'legacy'
-    except Exception:
-        creds = None
-
-if creds:
-    if not creds.valid and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-        serialized = creds.to_json()
-        try:
-            auth._save_token_to_keyring(serialized)
-        except Exception:
-            fallback.parent.mkdir(parents=True, exist_ok=True)
-            fallback.write_text(serialized, encoding='utf-8')
-    if creds.valid or creds.token:
-        qs = urllib.parse.urlencode({'access_token': creds.token})
-        with urllib.request.urlopen(f'https://oauth2.googleapis.com/tokeninfo?{qs}', timeout=15) as resp:
-            info = json.loads(resp.read().decode('utf-8'))
-        result = {'authenticated': True, 'email': info.get('email') or 'Google user', 'source': source}
-
-print('CHEP_COLAB_JSON:' + json.dumps(result), flush=True)
-"""
-
-
-_LOGIN_HELPER = r"""
-import json, sys, urllib.parse, urllib.request
-from pathlib import Path
-from importlib import resources
-import colab_cli.auth as auth
-from google_auth_oauthlib.flow import InstalledAppFlow
-
-payload = json.loads(sys.stdin.readline())
-fallback = Path(payload['fallback_token'])
-
-config_res = resources.files('colab_cli').joinpath('oauth_config.json')
-client_config = json.loads(config_res.read_text(encoding='utf-8'))
-flow = InstalledAppFlow.from_client_config(client_config, auth.PUBLIC_SCOPES)
-flow.redirect_uri = auth.REMOTE_REDIRECT_URI
-auth_url, _ = flow.authorization_url(prompt='consent', token_usage='remote')
-print('CHEP_COLAB_AUTH_URL:' + auth_url, flush=True)
-
-code = sys.stdin.readline().strip()
-if not code:
-    print('CHEP_COLAB_JSON:' + json.dumps({'ok': False, 'error': 'Missing authorization code.'}), flush=True)
-    raise SystemExit(1)
-
-flow.fetch_token(code=code)
-creds = flow.credentials
-serialized = creds.to_json()
-try:
-    auth._save_token_to_keyring(serialized)
-    fallback.unlink(missing_ok=True)
-except Exception:
-    fallback.parent.mkdir(parents=True, exist_ok=True)
-    fallback.write_text(serialized, encoding='utf-8')
-
-qs = urllib.parse.urlencode({'access_token': creds.token})
-with urllib.request.urlopen(f'https://oauth2.googleapis.com/tokeninfo?{qs}', timeout=15) as resp:
-    info = json.loads(resp.read().decode('utf-8'))
-
-email = info.get('email') or 'Google user'
-print('CHEP_COLAB_JSON:' + json.dumps({'ok': True, 'email': email}), flush=True)
-"""
-
-
-_LOGOUT_HELPER = r"""
-import json, sys
-from pathlib import Path
-
-payload = json.loads(sys.stdin.readline())
-fallback = Path(payload['fallback_token'])
-fallback.unlink(missing_ok=True)
-
-try:
-    import keyring
-    import colab_cli.auth as auth
-    try:
-        keyring.delete_password(auth.KEYRING_SERVICE_NAME, auth.KEYRING_USERNAME)
-    except Exception:
-        pass
-except Exception:
-    pass
-
-print('CHEP_COLAB_JSON:' + json.dumps({'ok': True}), flush=True)
-"""
-
-
-HELPER_AUTH_PREAMBLE = r"""
-def _load_colab_session(fallback_path):
-    import json, os, urllib.parse, urllib.request
-    from pathlib import Path
-    import colab_cli.auth as auth
-    from colab_cli.client import Client, Prod
-    from google.auth.transport import requests as g_requests
-    from google.auth.transport.requests import Request
-    from google.oauth2.credentials import Credentials
-
-    fallback = Path(fallback_path)
-    creds = None
-    try:
-        token_json = auth._get_token_from_keyring()
-        if token_json:
-            creds = Credentials.from_authorized_user_info(json.loads(token_json), auth.PUBLIC_SCOPES)
-    except Exception:
-        creds = None
-    if not creds and fallback.is_file():
-        creds = Credentials.from_authorized_user_file(str(fallback), auth.PUBLIC_SCOPES)
-    if not creds and os.path.exists(auth.LEGACY_TOKEN_PATH):
-        creds = Credentials.from_authorized_user_file(auth.LEGACY_TOKEN_PATH, auth.PUBLIC_SCOPES)
-    if not creds:
-        raise RuntimeError('Sign in to Google Colab before starting online transcription.')
-    if not creds.valid and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-        serialized = creds.to_json()
-        try:
-            auth._save_token_to_keyring(serialized)
-        except Exception:
-            fallback.parent.mkdir(parents=True, exist_ok=True)
-            fallback.write_text(serialized, encoding='utf-8')
-    qs = urllib.parse.urlencode({'access_token': creds.token})
-    with urllib.request.urlopen(f'https://oauth2.googleapis.com/tokeninfo?{qs}', timeout=15) as resp:
-        email = json.loads(resp.read().decode('utf-8')).get('email') or 'Google user'
-    return email, Client(Prod(), g_requests.AuthorizedSession(creds))
-"""
-
-
+from .helpers import LOGIN_HELPER, LOGOUT_HELPER, PASSIVE_AUTH_HELPER
 class ColabCLI:
     """Manage optional google-colab-cli wheel installation, OAuth sign-in, and isolated calls."""
 
@@ -323,7 +167,7 @@ class ColabCLI:
 
     def identity(self) -> str:
         """Return signed-in Google email or raise ValueError if authentication is required."""
-        data = self.run_helper(_PASSIVE_AUTH_HELPER, timeout=60)
+        data = self.run_helper(PASSIVE_AUTH_HELPER, timeout=60)
         if not data.get('authenticated') or not data.get('email'):
             raise ValueError('Sign in to Google Colab before starting online transcription.')
         return str(data['email'])
@@ -399,7 +243,7 @@ class ColabCLI:
 
     def _interactive_login(self) -> None:
         env = {**os.environ, 'PYTHONIOENCODING': 'utf-8', 'PYTHONUTF8': '1', 'PYTHONUNBUFFERED': '1'}
-        command = self._helper_command(_LOGIN_HELPER)
+        command = self._helper_command(LOGIN_HELPER)
         process = subprocess.Popen(
             command,
             stdin=subprocess.PIPE,
@@ -582,7 +426,7 @@ class ColabCLI:
         self.cancel_login()
         if self.installed:
             try:
-                self.run_helper(_LOGOUT_HELPER, timeout=30)
+                self.run_helper(LOGOUT_HELPER, timeout=30)
             except Exception:
                 pass
         self.fallback_token_path.unlink(missing_ok=True)

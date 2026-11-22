@@ -1,6 +1,6 @@
 """Build a private, self-contained Kaggle worker from the same inference code as Local."""
 import json
-from .config import ROOT
+from ...config import ROOT
 
 
 def notebook(config, job_id, source_sha256, *, part_index=0, span=None, source_duration=None):

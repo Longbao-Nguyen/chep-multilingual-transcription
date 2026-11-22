@@ -13,13 +13,30 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-OWNER = os.environ.get("CHEP_KAGGLE_OWNER", "longnj")
 KAGGLE_EXE = os.environ.get("KAGGLE_CLI") or shutil.which("kaggle") or "kaggle"
 RESULTS_ROOT = Path("test-results/eval-2026-11")
 LEDGER_PATH = RESULTS_ROOT / "ownership.json"
-SLUG_RE = re.compile(rf"^{re.escape(OWNER)}/chep-eval-[a-z0-9-]+$")
 STATUS_RE = re.compile(r'has status "(?:KernelWorkerStatus\.)?([A-Z_]+)"')
 FLAGS = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+
+
+def resolve_owner(owner: str | None = None) -> str:
+    candidate = owner or os.environ.get("CHEP_KAGGLE_OWNER") or os.environ.get("KAGGLE_USERNAME")
+    if not candidate:
+        cfg_dir = Path(os.environ.get("KAGGLE_CONFIG_DIR") or (Path.home() / ".kaggle"))
+        cfg_file = cfg_dir / "kaggle.json"
+        if cfg_file.is_file():
+            try:
+                candidate = json.loads(cfg_file.read_text(encoding="utf-8")).get("username")
+            except (OSError, ValueError):
+                candidate = None
+    if not candidate or not re.fullmatch(r"[a-zA-Z0-9_-]+", str(candidate)):
+        raise ValueError("Pass --owner <kaggle-username> or set CHEP_KAGGLE_OWNER.")
+    return str(candidate)
+
+
+def _slug_re(owner: str) -> re.Pattern[str]:
+    return re.compile(rf"^{re.escape(owner)}/chep-eval-[a-z0-9-]+$")
 
 
 class LiveFirstLogWatcher:
@@ -143,10 +160,10 @@ def run_kaggle(
     return last_out, last_code
 
 
-def _load_ledger() -> dict[str, Any]:
+def _load_ledger(owner: str | None = None) -> dict[str, Any]:
     if LEDGER_PATH.is_file():
         return json.loads(LEDGER_PATH.read_text(encoding="utf-8"))
-    return {"owner": OWNER, "kernels": []}
+    return {"owner": resolve_owner(owner), "kernels": []}
 
 
 def _save_ledger(data: dict[str, Any]) -> None:
@@ -156,10 +173,11 @@ def _save_ledger(data: dict[str, Any]) -> None:
     os.replace(tmp, LEDGER_PATH)
 
 
-def record_owned_kernel(ref: str, wave: str) -> None:
-    if not SLUG_RE.fullmatch(ref):
+def record_owned_kernel(ref: str, wave: str, *, owner: str | None = None) -> None:
+    resolved = resolve_owner(owner)
+    if not _slug_re(resolved).fullmatch(ref):
         raise ValueError(f"Refusing to record non-campaign kernel ref: {ref}")
-    ledger = _load_ledger()
+    ledger = _load_ledger(resolved)
     if not any(item["ref"] == ref for item in ledger["kernels"]):
         ledger["kernels"].append(
             {
@@ -187,7 +205,15 @@ def make_slug(wave: str) -> str:
     return f"chep-eval-{clean_wave}-{uuid.uuid4().hex[:8]}"
 
 
-def write_notebook_bundle(bundle_dir: Path, slug: str, script_source: str, dataset_sources: list[str]) -> None:
+def write_notebook_bundle(
+    bundle_dir: Path,
+    slug: str,
+    script_source: str,
+    dataset_sources: list[str],
+    *,
+    owner: str | None = None,
+) -> None:
+    resolved = resolve_owner(owner)
     bundle_dir.mkdir(parents=True, exist_ok=True)
     bootstrap = (
         "import os, pathlib, subprocess, sys\n"
@@ -233,7 +259,7 @@ def write_notebook_bundle(bundle_dir: Path, slug: str, script_source: str, datas
     }
     (bundle_dir / "notebook.ipynb").write_text(json.dumps(nb, indent=1, ensure_ascii=False), encoding="utf-8")
     meta = {
-        "id": f"{OWNER}/{slug}",
+        "id": f"{resolved}/{slug}",
         "title": slug,
         "code_file": "notebook.ipynb",
         "language": "python",
@@ -267,8 +293,10 @@ def _has_real_log_output(log_text: str) -> bool:
     return False
 
 
-def delete_owned_kernel(ref: str) -> bool:
-    if not SLUG_RE.fullmatch(ref):
+def delete_owned_kernel(ref: str, *, owner: str | None = None) -> bool:
+    ledger_owner = _load_ledger(owner).get("owner") if LEDGER_PATH.is_file() and owner is None else None
+    resolved = resolve_owner(owner or ledger_owner)
+    if not _slug_re(resolved).fullmatch(ref):
         raise ValueError(f"Refusing to delete non-campaign kernel ref: {ref}")
     out, code = run_kaggle(["kernels", "delete", ref, "-y"], timeout=90, check=False)
     lower = out.lower()
@@ -279,8 +307,9 @@ def delete_owned_kernel(ref: str) -> bool:
     return False
 
 
-def cleanup_ledger(only_refs: list[str] | None = None) -> dict[str, Any]:
-    ledger = _load_ledger()
+def cleanup_ledger(only_refs: list[str] | None = None, *, owner: str | None = None) -> dict[str, Any]:
+    ledger = _load_ledger(owner)
+    resolved = resolve_owner(owner or ledger.get("owner"))
     results = {}
     for item in ledger["kernels"]:
         ref = item["ref"]
@@ -288,7 +317,7 @@ def cleanup_ledger(only_refs: list[str] | None = None) -> dict[str, Any]:
             continue
         if only_refs is not None and ref not in only_refs:
             continue
-        ok = delete_owned_kernel(ref)
+        ok = delete_owned_kernel(ref, owner=resolved)
         results[ref] = ok
     return results
 
@@ -303,6 +332,7 @@ def submit_and_wait_wave(
     silent_timeout_s: int = 180,
     max_silent_retries: int = 2,
     sequential: bool = False,
+    owner: str | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Submit Kaggle T4 kernels, monitor, download outputs, and clean up.
 
@@ -311,6 +341,7 @@ def submit_and_wait_wave(
     """
     if not specs:
         return {}
+    resolved_owner = resolve_owner(owner)
     if sequential and len(specs) > 1:
         merged: dict[str, dict[str, Any]] = {}
         for sp in specs:
@@ -324,6 +355,7 @@ def submit_and_wait_wave(
                     silent_timeout_s=silent_timeout_s,
                     max_silent_retries=max_silent_retries,
                     sequential=False,
+                    owner=resolved_owner,
                 )
             )
         return merged
@@ -334,10 +366,10 @@ def submit_and_wait_wave(
 
     def _submit_one(spec: KernelSpec, tag: str, silent_retries: int = 0, queued_retries: int = 0) -> dict[str, Any]:
         slug = make_slug(spec.wave if tag == "" else f"{spec.wave}-{tag}")
-        ref = f"{OWNER}/{slug}"
+        ref = f"{resolved_owner}/{slug}"
         bdir = bundles_root / slug
-        write_notebook_bundle(bdir, slug, spec.code, spec.dataset_sources)
-        record_owned_kernel(ref, spec.wave)
+        write_notebook_bundle(bdir, slug, spec.code, spec.dataset_sources, owner=resolved_owner)
+        record_owned_kernel(ref, spec.wave, owner=resolved_owner)
         t_push = time.time()
         out, _ = run_kaggle(
             ["kernels", "push", "-p", str(bdir), "--accelerator", "NvidiaTeslaT4", "-t", "14400"],
@@ -401,7 +433,7 @@ def submit_and_wait_wave(
                     st["downloaded"] = True
                     st["download_log"] = dl_out.strip()
                     print(f"[downloaded] {ref} -> {dest}", flush=True)
-                    delete_owned_kernel(ref)
+                    delete_owned_kernel(ref, owner=resolved_owner)
                 elif any(tok in kstatus for tok in ("ERROR", "CANCEL", "FAILED")):
                     if st.get("log_watcher") is not None:
                         st["log_watcher"].close()
@@ -435,7 +467,7 @@ def submit_and_wait_wave(
                                     f"Kernel {ref} remained RUNNING with zero live SSE logs for >{silent_timeout_s}s after {max_silent_retries} retries."
                                 )
                             print(f"[silent restart] {ref} had 0 live SSE logs for {now - st['running_since']:.0f}s; deleting & retrying", flush=True)
-                            delete_owned_kernel(ref)
+                            delete_owned_kernel(ref, owner=resolved_owner)
                             new_st = _submit_one(
                                 st["spec"],
                                 f"r{st['silent_retries'] + 1}",
@@ -455,7 +487,7 @@ def submit_and_wait_wave(
                                 f"Kernel {ref} stayed {kstatus} for >{queued_timeout_s}s after {max_queued_retries} retries."
                             )
                         print(f"[queue restart] {ref} stuck in {kstatus} for {q_elapsed:.0f}s; deleting & retrying", flush=True)
-                        delete_owned_kernel(ref)
+                        delete_owned_kernel(ref, owner=resolved_owner)
                         new_st = _submit_one(
                             st["spec"],
                             f"q{st['queued_retries'] + 1}",
@@ -474,7 +506,7 @@ def submit_and_wait_wave(
         for st in states.values():
             if st.get("log_watcher") is not None:
                 st["log_watcher"].close()
-        cleanup_ledger(only_refs=submitted_refs)
+        cleanup_ledger(only_refs=submitted_refs, owner=resolved_owner)
 
     return {
         wave: {

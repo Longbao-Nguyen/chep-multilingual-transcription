@@ -12,9 +12,9 @@ from fastapi.testclient import TestClient
 from local_app.api import create_app
 from local_app.catalog import selection
 from local_app.config import prepare_data
-from local_app.kaggle_backend import KaggleBackend, kernel_status, silent_startup_overdue, validate_result
-from local_app.kaggle_cli import FirstLogMonitor, KaggleCLI, KaggleStopped, safe_error
-from local_app.kaggle_notebook import notebook
+from local_app.backends.kaggle.backend import KaggleBackend, kernel_status, silent_startup_overdue, validate_result
+from local_app.backends.kaggle.cli import FirstLogMonitor, KaggleCLI, KaggleStopped, safe_error
+from local_app.backends.kaggle.notebook import notebook
 from local_app.store import Store
 
 
@@ -122,7 +122,7 @@ def test_first_log_monitor_detects_live_cli_output(monkeypatch):
         commands.append(command)
         assert kwargs['stderr'] == subprocess.DEVNULL
         return Process()
-    monkeypatch.setattr('local_app.kaggle_cli.subprocess.Popen', popen)
+    monkeypatch.setattr('local_app.backends.kaggle.cli.subprocess.Popen', popen)
     cli = Mock()
     cli.command.side_effect = lambda args: ['kaggle', *args]
     monitor = FirstLogMonitor(cli, 'tester/chep-run-' + 'a' * 24)

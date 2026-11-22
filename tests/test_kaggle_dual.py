@@ -8,8 +8,8 @@ import pytest
 
 from local_app.catalog import selection
 from local_app.config import prepare_data
-from local_app.kaggle_backend import KaggleBackend
-from local_app.kaggle_merge import merge_segments, shard_ranges
+from local_app.backends.kaggle.backend import KaggleBackend
+from local_app.backends.kaggle.merge import merge_segments, shard_ranges
 from local_app.store import Store
 from local_app.worker import select_range
 
@@ -190,8 +190,8 @@ def test_silent_dual_shard_retries_only_that_notebook(tmp_path, monkeypatch):
     (tmp_path / 'sources/job').write_bytes(b'audio')
     backend = KaggleBackend(store)
     monkeypatch.setattr('local_app.worker.decoded_duration', lambda _: 22 * 60)
-    monkeypatch.setattr('local_app.kaggle_backend.FIRST_LOG_TIMEOUT_SECONDS', 0)
-    monkeypatch.setattr('local_app.kaggle_backend.FIRST_LOG_RECONNECT_GRACE_SECONDS', 0)
+    monkeypatch.setattr('local_app.backends.kaggle.backend.FIRST_LOG_TIMEOUT_SECONDS', 0)
+    monkeypatch.setattr('local_app.backends.kaggle.backend.FIRST_LOG_RECONNECT_GRACE_SECONDS', 0)
     monkeypatch.setattr(backend.cli, 'identity', lambda: 'tester')
     monitors = []
     def watch(ref):
@@ -233,8 +233,8 @@ def test_silent_single_notebook_gets_new_ref_without_reupload(tmp_path, monkeypa
     (tmp_path / 'sources/job').write_bytes(b'audio')
     backend = KaggleBackend(store)
     monkeypatch.setattr('local_app.worker.decoded_duration', lambda _: 60)
-    monkeypatch.setattr('local_app.kaggle_backend.FIRST_LOG_TIMEOUT_SECONDS', 0)
-    monkeypatch.setattr('local_app.kaggle_backend.FIRST_LOG_RECONNECT_GRACE_SECONDS', 0)
+    monkeypatch.setattr('local_app.backends.kaggle.backend.FIRST_LOG_TIMEOUT_SECONDS', 0)
+    monkeypatch.setattr('local_app.backends.kaggle.backend.FIRST_LOG_RECONNECT_GRACE_SECONDS', 0)
     monkeypatch.setattr(backend.cli, 'identity', lambda: 'tester')
     monkeypatch.setattr(backend.cli, 'watch_first_log', lambda ref: FirstLogStub())
     calls = []

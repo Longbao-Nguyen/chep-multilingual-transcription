@@ -8,9 +8,9 @@ import threading
 import time
 import uuid
 
-from .config import atomic_json
-from .kaggle_backend import kernel_status, cleanup_response
-from .kaggle_cli import safe_error
+from ...config import atomic_json
+from .backend import kernel_status, cleanup_response
+from .cli import safe_error
 
 log = logging.getLogger(__name__)
 

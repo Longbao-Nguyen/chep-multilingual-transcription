@@ -8,8 +8,9 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from .colab_cli import ColabCLI, HELPER_AUTH_PREAMBLE, safe_error
-from .config import atomic_json
+from .cli import ColabCLI, safe_error
+from .helpers import HELPER_AUTH_PREAMBLE
+from ...config import atomic_json
 
 log = logging.getLogger(__name__)
 
