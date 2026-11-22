@@ -4,7 +4,5 @@
 #define Label_en "English Transcription Model (1446 MB download)"
 #define Size_es 1622885433
 #define Label_es "Spanish Transcription Model (1548 MB download)"
-#define Size_de 1622886291
-#define Label_de "German Transcription Model (1548 MB download)"
 #define Size_vi 1532631154
 #define Label_vi "Vietnamese Transcription Model (1462 MB download)"

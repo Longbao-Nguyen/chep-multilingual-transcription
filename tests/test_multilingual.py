@@ -28,10 +28,10 @@ def test_no_download_on_startup_and_all_languages_are_available(client, monkeypa
     download = Mock(side_effect=AssertionError('Unexpected network request'))
     monkeypatch.setattr('urllib.request.urlopen', download)
     payload = client.get('/api/status').json()
-    assert [c['language'] for c in payload['languages']] == ['fr','en','es','de','vi']
+    assert [c['language'] for c in payload['languages']] == ['fr','en','es','vi']
     assert payload['model']['status'] == 'missing'
     assert payload['runtime']['profile'] is None
-    for language in ['en','de','es','vi','fr']:
+    for language in ['en','es','vi','fr']:
         assert client.put('/api/settings',json={'language':language}).status_code == 200
         result=client.get('/api/status').json()
         assert result['model']['language'] == language

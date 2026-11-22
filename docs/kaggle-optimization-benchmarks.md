@@ -282,14 +282,14 @@ with a job owner different from the model Dataset owner (`french-transcript`).
 
 The pinned public versions are `french-transcript/french-whisper-ct2/1`,
 `french-transcript/english-whisper-ct2/1`, `french-transcript/spanish-whisper-ct2/1`,
-`french-transcript/german-whisper-ct2/1`, and `french-transcript/vietnamese-whisper-ct2/1`,
+and `french-transcript/vietnamese-whisper-ct2/1`,
 hosted under the [Chep-Transcript](https://www.kaggle.com/organizations/french-transcript/)
 Kaggle organization (`french-transcript`).
 The initial 2026-10-14 publication and smoke checks were recorded under `longnj`
 (see `test-results/model-publication/verification.json`) before migrating the public
 model Datasets to the `french-transcript` organization with identical version 1 model
 files and `isPrivate=false`.
-The four non-French Datasets were published from SHA-256-verified model files.
+The three non-French Datasets were published from SHA-256-verified model files.
 That historical check does not substitute for a live notebook run under a second
 account; no second GPU-capable account was available.
 
@@ -327,7 +327,6 @@ TXT/SRT output and finished with their private test resources cleaned:
 | French | 21 min | Two notebooks, 5 s overlap | Completed; both notebooks and private Dataset cleaned |
 | English | 1 min | One notebook | Completed; resources cleaned |
 | Spanish | 1 min | One notebook | Completed; resources cleaned |
-| German | 1 min | One notebook | Completed; resources cleaned |
 | Vietnamese | 1 min | One notebook | Completed; resources cleaned after a transient first cleanup failure and retry |
 
 These runs verify attachment, model-file checksum checks, routing, output import,
@@ -361,11 +360,11 @@ Across all 20 notebooks, the mean observed lower bound was **23.922 s** (Rdv 24.
 
 The large difference between the 6–12-second *persisted log-event time fields* and some 52–64-second *wall-clock RUNNING-to-live-log intervals* shows why the earlier log-field average of 7.269 seconds was not a startup estimate. This experiment confirms that Kaggle can expose `RUNNING` well before its live API delivers the first line in this app flow. It does not by itself prove whether the remaining gap is Kaggle worker/cell scheduling, work before the warning, or log-stream delivery. A browser comparison and an immediate flushed cell-start marker would separate those possibilities.
 
-All 20 valid notebooks reached the attach-confirmed file and log with Tesla T4 and matching source/model identity. All 20 notebooks and ten private audio Datasets were deleted. One additional Rdv trial was excluded because Kaggle SDK output retrieval hit Windows cp1252 encoding; both notebooks and its Dataset were also deleted. The rerun used UTF-8 and passed. Final `longnj` inventory showed **zero notebooks** and only the five required public model Datasets. Raw UTC times, status observations, live-log receipt times, event fields, attach checks and cleanup flags are in gitignored `test-results/kaggle-startup/running-live-2026-10-16/results.json`; the reproducible harness is `scripts/benchmarks/kaggle_app_startup_benchmark.py`.
+All 20 valid notebooks reached the attach-confirmed file and log with Tesla T4 and matching source/model identity. All 20 notebooks and ten private audio Datasets were deleted. One additional Rdv trial was excluded because Kaggle SDK output retrieval hit Windows cp1252 encoding; both notebooks and its Dataset were also deleted. The rerun used UTF-8 and passed. Final `longnj` inventory showed **zero notebooks** and only the four required public model Datasets. Raw UTC times, status observations, live-log receipt times, event fields, attach checks and cleanup flags are in gitignored `test-results/kaggle-startup/running-live-2026-10-16/results.json`; the reproducible harness is `scripts/benchmarks/kaggle_app_startup_benchmark.py`.
 
 ### Kaggle account cleanup
 
-Before this campaign, ten old notebooks and three obsolete Datasets were removed from longnj. The French public model Dataset display title was changed to **Chep French CTranslate2 model** without changing its slug longnj/french-whisper-ct2 or version 1. The post-campaign inventory contains the five required public model Datasets (French, English, Spanish, German, Vietnamese) and no notebooks. The old cleanup ledger is in gitignored test-results/kaggle-startup/cleanup.json.
+Before this campaign, ten old notebooks and three obsolete Datasets were removed from longnj. The French public model Dataset display title was changed to **Chep French CTranslate2 model** without changing its slug longnj/french-whisper-ct2 or version 1. The post-campaign inventory contains the four required public model Datasets (French, English, Spanish, Vietnamese) and no notebooks. The old cleanup ledger is in gitignored test-results/kaggle-startup/cleanup.json.
 
 ## Live Kaggle UI comparison - stopped at five pairs
 
@@ -383,7 +382,7 @@ The CLI/API column is the lower–upper interval from first observed `RUNNING` t
 
 The ten CLI lower bounds have a mean of **25.379 s**, a median of **17.359 s**, and a range of **9.375–56.000 s**. Three exceeded 30 seconds; two exceeded 50 seconds. Browser readings tracked the same broad pattern, including the pair whose two notebooks both took about 50 seconds. They were usually several seconds lower than the CLI/API receipt intervals, so the two signals should not be treated as identical clocks or exact substitutes. This sample did not reproduce a five-minute gap and cannot estimate how rare that event is.
 
-All ten valid notebooks and their five private audio Datasets were deleted after the user's comparison. Three earlier attempts failed or were excluded (one transient status connection error, one malformed Kaggle Dataset-upload response, and one interactive terminal input failure); their resources were cleaned. Preparation of a sixth pair was cancelled before either notebook was submitted, and its private Dataset was deleted. The final `longnj` inventory again showed **zero notebooks** and only the five public model Datasets. Raw CLI observations and cleanup flags are in gitignored `test-results/kaggle-startup/running-live-ui-2026-10-16/results.json`; the user's approximate UI readings are preserved separately in `ui-observations.json` in the same folder.
+All ten valid notebooks and their five private audio Datasets were deleted after the user's comparison. Three earlier attempts failed or were excluded (one transient status connection error, one malformed Kaggle Dataset-upload response, and one interactive terminal input failure); their resources were cleaned. Preparation of a sixth pair was cancelled before either notebook was submitted, and its private Dataset was deleted. The final `longnj` inventory again showed **zero notebooks** and only the four public model Datasets. Raw CLI observations and cleanup flags are in gitignored `test-results/kaggle-startup/running-live-ui-2026-10-16/results.json`; the user's approximate UI readings are preserved separately in `ui-observations.json` in the same folder.
 
 ## App response to a silent RUNNING notebook
 

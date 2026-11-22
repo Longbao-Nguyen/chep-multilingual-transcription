@@ -50,7 +50,7 @@ export function UserGuideDrawer({ onClose }: { onClose: () => void }) {
           </ul>
           <h4>Step 2: Select a Language</h4>
           <p>
-            Choose the language of the audio you want to transcribe. This version of Chep supports French, English, Spanish, German, and Vietnamese.
+            Choose the language of the audio you want to transcribe. This version of Chep supports French, English, Spanish, and Vietnamese.
           </p>
           <h4>Step 3: Add Audio Files to the Queue</h4>
           <p>Select or drag and drop the audio files you want to transcribe to create a processing queue.</p>

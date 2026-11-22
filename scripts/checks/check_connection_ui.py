@@ -63,7 +63,7 @@ try:
         assert page.locator('.topbar').get_by_role('button', name='Close Chep', exact=True).count() == 1
         assert page.get_by_text('From sound to words.', exact=True).count() == 0
         assert page.get_by_text('YOUR VOICE, SIMPLY WRITTEN', exact=True).count() == 0
-        for language in ['fr', 'en', 'es', 'de', 'vi']:
+        for language in ['fr', 'en', 'es', 'vi']:
             page.locator('#language').select_option(language)
             page.wait_for_timeout(500)
             assert page.locator('.model-card').get_by_text('CT2:', exact=False).count() == 0

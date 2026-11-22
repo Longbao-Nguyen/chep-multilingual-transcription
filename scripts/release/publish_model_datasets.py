@@ -25,7 +25,6 @@ SLUGS = {
     'fr': 'french-whisper-ct2',
     'en': 'english-whisper-ct2',
     'es': 'spanish-whisper-ct2',
-    'de': 'german-whisper-ct2',
     'vi': 'vietnamese-whisper-ct2',
 }
 

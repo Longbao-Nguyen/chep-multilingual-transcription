@@ -1,6 +1,6 @@
 Chep
 
-Transcribe French, English, Spanish, German and Vietnamese on your computer or optionally with Kaggle GPU.
+Transcribe French, English, Spanish and Vietnamese on your computer or optionally with Kaggle GPU.
 
 - Windows 10/11, 64-bit. GPU acceleration or CPU mode.
 - Python and CPU libraries are included. GPU runtimes and models are optional downloads.

@@ -55,7 +55,7 @@ def test_old_and_current_jobs_share_same_manager(tmp_path):
     finally:
         registry.close()
 
-@pytest.mark.parametrize('language',['fr','en','de'])
+@pytest.mark.parametrize('language',['fr','en'])
 def test_mirrored_artifacts_preserve_queued_settings_and_require_identity(language):
     current=model_config(language)
     assert current['ct2_model'].startswith('nunu-willump/')

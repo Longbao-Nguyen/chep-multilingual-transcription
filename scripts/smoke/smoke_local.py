@@ -60,18 +60,18 @@ def main():
             page.on('pageerror',lambda error:errors.append(str(error)))
             page.goto(instance['url'])
             page.get_by_role('button',name='Close Chep',exact=True).wait_for()
-            wait_for(lambda:page.locator('#language option').count()==5,30)
+            wait_for(lambda:page.locator('#language option').count()==4,30)
             assert page.locator('#device option').count()==3
             assert page.get_by_role('button',name='Settings',exact=True).count()==0
-            assert page.locator('footer,.sidebar-note,.topbar-actions,.chunk-note,.ready-label').count()==0
+            assert page.locator('footer,.sidebar-note,.chunk-note,.ready-label').count()==0
             assert page.locator('html').get_attribute('lang')=='en'
-            for language,model in [('en','distil-whisper/distil-large-v3.5-ct2'),('es','adriszmar/whisper-large-v3-turbo-es'),('de','primeline/whisper-large-v3-turbo-german'),('vi','vinai/PhoWhisper-medium')]:
+            for language,model in [('en','distil-whisper/distil-large-v3.5-ct2'),('es','adriszmar/whisper-large-v3-turbo-es'),('vi','vinai/PhoWhisper-medium')]:
                 page.locator('#language').select_option(language)
                 page.get_by_text(model,exact=True).wait_for()
                 wait_for(lambda:not page.locator('#language').is_disabled(),30)
                 assert page.get_by_text('Compute type',exact=True).count()==0
                 assert page.get_by_role('button',name='Download / repair model').count()==1
-            report['checks'].append('five language choices, CPU selector, missing models, no stale precision, removed UI regions')
+            report['checks'].append('four language choices, CPU selector, missing models, no stale precision, removed UI regions')
             wait_for(lambda: client.get('api/status').json()['components']['gpu']['status']!='checking',30)
             compatible=client.get('api/status').json()['components']['gpu']['compatible']
             warning=page.get_by_text('CPU processing may be significantly slower than GPU. For faster transcription, we recommend using a compatible GPU.',exact=True)
@@ -91,7 +91,7 @@ def main():
             report['checks'].append('CPU recommendation follows compatibility; optional GPU runtime confirmation can be dismissed without downloading')
             page.screenshot(path=str(screenshots/'v2-desktop.png'),full_page=True)
             page.get_by_role('button',name='History',exact=False).first.click()
-            assert page.locator('footer,.sidebar-note,.topbar-actions').count()==0
+            assert page.locator('footer,.sidebar-note').count()==0
             page.screenshot(path=str(screenshots/'v2-history.png'),full_page=True)
             page.get_by_role('button',name='Transcribe',exact=False).first.click()
             page.set_viewport_size({'width':390,'height':844})

@@ -8,7 +8,7 @@ import urllib.request
 from huggingface_hub import HfApi, hf_hub_download, hf_hub_url
 
 ROOT = Path(__file__).resolve().parents[2]
-TARGETS = {'fr':'whisper-large-v3-french-distil-dec16-ct2', 'en':'distil-large-v3.5-ct2', 'de':'whisper-large-v3-turbo-german-ct2'}
+TARGETS = {'fr':'whisper-large-v3-french-distil-dec16-ct2', 'en':'distil-large-v3.5-ct2'}
 HF = Path.home()/'anaconda3/envs/french_transcript/Scripts/hf.exe'
 
 def main():
@@ -35,21 +35,10 @@ def main():
                 assert hashlib.file_digest(stream, 'sha256').hexdigest() == meta['sha256']
             shutil.copy2(cached, folder/filename)
         licenses = {'LICENSE-Whisper':'https://raw.githubusercontent.com/openai/whisper/main/LICENSE'}
-        licenses['LICENSE'] = ('https://www.apache.org/licenses/LICENSE-2.0.txt' if code == 'de' else
-                               'https://raw.githubusercontent.com/huggingface/distil-whisper/main/LICENSE' if code == 'en' else licenses['LICENSE-Whisper'])
+        licenses['LICENSE'] = ('https://raw.githubusercontent.com/huggingface/distil-whisper/main/LICENSE' if code == 'en' else licenses['LICENSE-Whisper'])
         for filename, url in licenses.items():
             with urllib.request.urlopen(url) as response:
                 (folder/filename).write_bytes(response.read())
-        if code == 'de':
-            p = hf_hub_download(cfg['model'], 'README.md', revision=cfg['source_revision'])
-            shutil.copy2(p, folder/'ORIGINAL_MODEL_CARD.md')
-            # Retain any original notices when supplied by either upstream repository.
-            original = HfApi().model_info(cfg['model'], revision=cfg['source_revision'])
-            for origin, rev, records in [(source,revision,info.siblings),(cfg['model'],cfg['source_revision'],original.siblings)]:
-                for f in records:
-                    if f.rfilename.upper() in ('NOTICE','NOTICE.TXT','LICENSE','LICENSE.TXT'):
-                        p=hf_hub_download(origin,f.rfilename,revision=rev)
-                        shutil.copy2(p,folder/(origin.split('/')[0]+'-'+f.rfilename))
         manifest = {'source':source,'revision':revision,'original_model':cfg['model'],'original_revision':cfg['source_revision'],
                     'files':{n:{k:m[k] for k in ('size','sha256')} for n,m in cfg['files'].items()},'weights_modified':False}
         (folder/'provenance.json').write_text(json.dumps(manifest,indent=2))

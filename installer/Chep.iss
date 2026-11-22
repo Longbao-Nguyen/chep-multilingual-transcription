@@ -69,8 +69,7 @@ begin
   if OptionalPage.Values[1] then Total := Total + {#Size_fr};
   if OptionalPage.Values[2] then Total := Total + {#Size_en};
   if OptionalPage.Values[3] then Total := Total + {#Size_es};
-  if OptionalPage.Values[4] then Total := Total + {#Size_de};
-  if OptionalPage.Values[5] then Total := Total + {#Size_vi};
+  if OptionalPage.Values[4] then Total := Total + {#Size_vi};
   DownloadTotal.Caption := 'Total download after first launch: ' + IntToStr(Round(Total / 1048576)) + ' MB.' + #13#10 + 'Downloads run in the app and can be paused or retried. Nothing is downloaded by Setup.';
 end;
 
@@ -96,7 +95,6 @@ begin
   OptionalPage.Add('{#Label_fr}');
   OptionalPage.Add('{#Label_en}');
   OptionalPage.Add('{#Label_es}');
-  OptionalPage.Add('{#Label_de}');
   OptionalPage.Add('{#Label_vi}');
   if not GPUCompatible then begin
     Reason := GetIniString('GPU','reason','GPU compatibility could not be checked. You can check again in the app.',GPUInfo);
@@ -130,8 +128,7 @@ begin
     if OptionalPage.Values[1] then Choices := Choices + '"model:fr",';
     if OptionalPage.Values[2] then Choices := Choices + '"model:en",';
     if OptionalPage.Values[3] then Choices := Choices + '"model:es",';
-    if OptionalPage.Values[4] then Choices := Choices + '"model:de",';
-    if OptionalPage.Values[5] then Choices := Choices + '"model:vi",';
+    if OptionalPage.Values[4] then Choices := Choices + '"model:vi",';
     if Length(Choices) > 0 then Delete(Choices, Length(Choices), 1);
     Payload := '{"schema_version":1,"setup_id":"' + GetDateTimeString('yyyymmddhhnnsszzz', '-', ':') + '","components":[' + Choices + ']}';
     ForceDirectories(GetDataDir(''));

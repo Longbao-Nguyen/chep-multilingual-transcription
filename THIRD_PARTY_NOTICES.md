@@ -12,12 +12,11 @@ Spanish and Vietnamese are distributed as preconverted FP16 CTranslate2 artifact
 
 Configured model sources:
 
-French, English and German CT2 preservation mirrors are hosted at `nunu-willump/whisper-large-v3-french-distil-dec16-ct2`, `nunu-willump/distil-large-v3.5-ct2` and `nunu-willump/whisper-large-v3-turbo-german-ct2` on Hugging Face. Their weights are unchanged. Upstream cards, license notices and source provenance are retained in each repository.
+French and English CT2 preservation mirrors are hosted at `nunu-willump/whisper-large-v3-french-distil-dec16-ct2` and `nunu-willump/distil-large-v3.5-ct2` on Hugging Face. Their weights are unchanged. Upstream cards, license notices and source provenance are retained in each repository.
 
 - French: Bofeng Huang, MIT, https://huggingface.co/bofenghuang/whisper-large-v3-french-distil-dec16
 - English: Distil-Whisper, MIT, https://huggingface.co/distil-whisper/distil-large-v3.5-ct2
 - Spanish: adriszmar, MIT, https://huggingface.co/adriszmar/whisper-large-v3-turbo-es
-- German: primeLine, Apache-2.0, https://huggingface.co/primeline/whisper-large-v3-turbo-german; CT2 conversion https://huggingface.co/ostwilkens/whisper-large-v3-turbo-german-ct2
 - Vietnamese: VinAI, BSD-3-Clause, https://huggingface.co/vinai/PhoWhisper-medium. PhoWhisper: Automatic Speech Recognition for Vietnamese, Thanh-Thien Le, Linh The Nguyen and Dat Quoc Nguyen, ICLR 2024 Tiny Papers.
 
 Original French artifact provenance:
