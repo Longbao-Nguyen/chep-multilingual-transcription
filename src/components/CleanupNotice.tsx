@@ -10,7 +10,8 @@ export function CleanupNotice({ job, onExpire }: { job: PendingCleanup; onExpire
   return (
     <div className="cleanup-banner" role="alert">
       <span>
-        {job.name}: cleanup pending{job.owner ? ` in ${job.owner}'s Kaggle account` : ''}.{' '}
+        {job.name}: cleanup pending
+        {job.owner ? ` in ${job.owner}'s ${job.provider === 'colab' ? 'Colab' : 'Kaggle'} account` : ''}.{' '}
         {Object.values(job.errors).join(' ') || 'Chep will retry cleanup automatically.'}
       </span>
     </div>

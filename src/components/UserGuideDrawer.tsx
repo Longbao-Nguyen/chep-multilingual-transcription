@@ -39,7 +39,7 @@ export function UserGuideDrawer({ onClose }: { onClose: () => void }) {
           <p>Each processing option has its own advantages:</p>
           <ul>
             <li>
-              <strong>Online GPU (Recommended):</strong> Kaggle typically provides up to 30 hours of free GPU usage per week. The models were benchmarked and optimized on Kaggle GPUs during development, making this the recommended option for most users.
+              <strong>Online GPU (Recommended):</strong> Kaggle typically provides up to 30 hours of free GPU usage per week, while Google Colab provides about 5 hours per session, resetting after roughly 2 days. The models were benchmarked and optimized on cloud T4 GPUs during development, making Online GPU the recommended option for most users.
             </li>
             <li>
               <strong>Local GPU:</strong> Provides greater privacy by keeping all input audio files and output transcripts on your device. This option is available only for compatible NVIDIA GPUs with CUDA support.
@@ -82,9 +82,9 @@ export function UserGuideDrawer({ onClose }: { onClose: () => void }) {
             <li>Download the language models you want to use.</li>
           </ol>
           <p>Chep will be able to run transcription directly on your device when the required components are installed.</p>
-          <h4>Online GPU (Kaggle — Recommended)</h4>
+          <h4>Online GPU (Kaggle, Colab)</h4>
           <p>
-            Online GPU is a convenient option that allows you to use Kaggle's free GPU resources without requiring powerful local hardware.
+            Online GPU is a convenient option that allows you to use free cloud GPU resources without requiring powerful local hardware. For Kaggle:
           </p>
           <ol>
             <li>
@@ -99,10 +99,13 @@ export function UserGuideDrawer({ onClose }: { onClose: () => void }) {
             </li>
           </ol>
           <p>
+            Google Colab follows a similar setup process: select <strong>Online GPU (Google Colab)</strong>, download Colab CLI, sign in with your Google account by pasting the authorization code, and check GPU availability.
+          </p>
+          <p>
             Once finished, you can start transcribing without downloading language models or CUDA components to your computer.
           </p>
           <p>
-            <strong>Note:</strong> Online GPU processing requires an internet connection. Your audio files will be uploaded to your private Kaggle account for processing and deleted after.
+            <strong>Note:</strong> Online GPU processing requires an internet connection. Your audio files are uploaded to your private Kaggle account or temporary Google Colab session for processing and deleted afterward.
           </p>
         </section>
         <section>
@@ -123,7 +126,7 @@ export function UserGuideDrawer({ onClose }: { onClose: () => void }) {
           </p>
         </section>
         <p>
-          You can follow progress on Kaggle: click <strong>Create/Sign in an account</strong>, then click{' '}
+          You can follow Kaggle job progress by visiting <strong>kaggle.com</strong> and clicking{' '}
           <strong>View Active Events</strong> in the bottom-left corner.
         </p>
       </div>

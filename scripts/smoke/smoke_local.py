@@ -61,7 +61,7 @@ def main():
             page.goto(instance['url'])
             page.get_by_role('button',name='Close Chep',exact=True).wait_for()
             wait_for(lambda:page.locator('#language option').count()==4,30)
-            assert page.locator('#device option').count()==3
+            assert page.locator('#device option').count()==4
             assert page.get_by_role('button',name='Settings',exact=True).count()==0
             assert page.locator('footer,.sidebar-note,.chunk-note,.ready-label').count()==0
             assert page.locator('html').get_attribute('lang')=='en'

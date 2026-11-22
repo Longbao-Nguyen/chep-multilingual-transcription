@@ -25,6 +25,19 @@ export const JOB_STATUS_LABELS: Record<string, string> = {
   CANCELLED: 'Cancelled',
 };
 
+const COLAB_STATUS_LABELS: Record<string, string> = {
+  UPLOADING: 'Uploading to Colab',
+  WAITING_GPU: 'Waiting for Colab GPU',
+  REMOTE_RUNNING: 'Processing on Colab',
+};
+
+export function jobStatusLabel(status: string, devicePreference?: string): string {
+  if (devicePreference === 'colab' && status in COLAB_STATUS_LABELS) {
+    return COLAB_STATUS_LABELS[status];
+  }
+  return JOB_STATUS_LABELS[status] || status;
+}
+
 export function formatBytes(n: number): string {
   return n >= 1024 ** 3
     ? `${(n / 1024 ** 3).toFixed(1)} GB`

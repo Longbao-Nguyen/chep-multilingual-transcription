@@ -12,6 +12,7 @@ interface DeviceCardProps {
   locked: boolean;
   busy: boolean;
   kaggleWorking: boolean;
+  colabWorking: boolean;
   onAction: (path: string, method?: string, body?: object) => void;
 }
 
@@ -25,11 +26,14 @@ export function DeviceCard({
   locked,
   busy,
   kaggleWorking,
+  colabWorking,
   onAction,
 }: DeviceCardProps) {
   const gpuDownloading = status?.components.tasks.some(
     t => t.id === 'gpu:auto' && ['queued', 'downloading', 'verifying', 'installing'].includes(t.status),
   );
+  const device = status?.settings.device || 'auto';
+  const isColab = device === 'colab';
 
   return (
     <section className="engine-card">
@@ -42,15 +46,48 @@ export function DeviceCard({
       </label>
       <select
         id="device"
-        value={status?.settings.device || 'auto'}
+        value={device}
         disabled={locked}
         onChange={e => onAction('/settings', 'PUT', { device: e.target.value })}
       >
         <option value="kaggle">Online GPU (Kaggle, recommended)</option>
+        <option value="colab">Online GPU (Google Colab)</option>
         <option value="auto">Local GPU (if CUDA available)</option>
         <option value="cpu">CPU only</option>
       </select>
-      {online ? (
+      {online && isColab ? (
+        <div className="online-device">
+          <h2>Online GPU (Colab)</h2>
+          <p className="engine-reason">
+            Audio is uploaded to a temporary Google Colab T4 session in your account, deleted when the queue finishes, and saved to History.
+          </p>
+          {!status?.colab.installed ? (
+            <>
+              <button
+                className="small-button wide"
+                disabled={busy || colabWorking}
+                onClick={() => onAction('/colab/download')}
+              >
+                <ArrowDownToLine size={15} />
+                {colabWorking ? 'Downloading...' : 'Download Colab CLI'}
+              </button>
+              <p className="download-size">Download: {formatBytes(status?.colab.download_bytes || 0)}</p>
+            </>
+          ) : null}
+          {status?.colab.status === 'downloading' && (
+            <progress max={1} value={status.colab.progress} aria-label="Colab CLI download progress" />
+          )}
+          {status?.colab.installed && status.colab.error && (
+            <button
+              className="text-button"
+              disabled={busy || colabWorking}
+              onClick={() => onAction('/colab/download')}
+            >
+              Repair Colab CLI
+            </button>
+          )}
+        </div>
+      ) : online ? (
         <div className="online-device">
           <h2>Online GPU</h2>
           <p className="engine-reason">

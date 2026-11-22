@@ -2,10 +2,10 @@ import { ArrowDownToLine, Check, FileAudio, LoaderCircle, RefreshCw, Trash2, X }
 import type { Job, Remote } from '../types';
 import {
   ACTIVE_JOB_STATUSES,
-  JOB_STATUS_LABELS,
   formatBytes,
   formatDuration,
   formatErrorText,
+  jobStatusLabel,
   parseJson,
 } from '../utils/format';
 import { JobMetadata } from './JobMetadata';
@@ -30,7 +30,9 @@ export function JobItem({
   onDownload,
 }: JobItemProps) {
   const isActive = ACTIVE_JOB_STATUSES.has(job.status);
+  const config = parseJson<{ device_preference?: string }>(job.config);
   const remote = job.remote ? parseJson<Remote>(job.remote) : undefined;
+  const provider = remote?.provider || (config?.device_preference === 'colab' ? 'colab' : 'kaggle');
   const showRemoteCleanup =
     remote &&
     !remote.cleaned &&
@@ -46,7 +48,7 @@ export function JobItem({
           <h3 title={job.name}>{job.name}</h3>
           <span className={`badge ${job.status.toLowerCase()}`}>
             {isActive && <LoaderCircle size={12} className="spin" />}
-            {JOB_STATUS_LABELS[job.status] || job.status}
+            {jobStatusLabel(job.status, config?.device_preference)}
           </span>
         </div>
         <p>
@@ -64,7 +66,7 @@ export function JobItem({
                 disabled={busy || activeJobId === job.id}
                 onClick={() => onAction(`/jobs/${job.id}/cleanup`)}
               >
-                Remove files from Kaggle
+                {provider === 'colab' ? 'Release Colab runtime' : 'Remove files from Kaggle'}
               </button>
             )}
           </div>

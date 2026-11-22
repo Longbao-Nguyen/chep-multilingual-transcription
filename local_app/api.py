@@ -33,6 +33,9 @@ class DownloadAction(BaseModel):
 class ExitChoice(BaseModel):
     choice: str
 
+class ColabCode(BaseModel):
+    code: str
+
 
 def create_app(data_dir: Path, token: str, model_dir: Path | None = None):
     root = prepare_data(data_dir)
@@ -137,7 +140,8 @@ def create_app(data_dir: Path, token: str, model_dir: Path | None = None):
         return {"queue": engine.snapshot(), "model": model, "runtime": runtime, "languages": public_catalog(), "hardware": runtime.get('hardware', engine.hardware),
                 "settings": store.settings(), "data_dir": str(root), "free_bytes": shutil.disk_usage(root).free,
                 "version": "0.7.0", "components": engine.components.snapshot(), "kaggle": engine.kaggle.cli.snapshot(),
-                "kaggle_gpu": engine.kaggle_gpu.snapshot()}
+                "kaggle_gpu": engine.kaggle_gpu.snapshot(), "colab": engine.colab.cli.snapshot(),
+                "colab_gpu": engine.colab_gpu.snapshot()}
 
     @app.post('/api/kaggle/gpu/check')
     def check_kaggle_gpu():
@@ -152,8 +156,26 @@ def create_app(data_dir: Path, token: str, model_dir: Path | None = None):
             engine.kaggle.cli.action(action)
         return {'ok': True}
 
+    @app.post('/api/colab/gpu/check')
+    def check_colab_gpu():
+        engine.colab_gpu.start()
+        return {'ok': True}
+
+    @app.post('/api/colab/code')
+    def colab_submit_code(body: ColabCode):
+        engine.colab.cli.submit_code(body.code)
+        return {'ok': True}
+
+    @app.post('/api/colab/{action}')
+    def colab_action(action: str):
+        with engine.lock:
+            if action in ('download', 'login', 'logout') and engine.state != 'PAUSED':
+                raise ValueError('Pause the queue before changing the Colab connection.')
+            engine.colab.cli.action(action)
+        return {'ok': True}
+
     @app.post('/api/jobs/{job_id}/cleanup')
-    def cleanup_kaggle(job_id: str):
+    def cleanup_remote(job_id: str):
         with engine.lock:
             removed = store.get(job_id, include_removed=True)
             if removed and removed['removed']:
@@ -162,8 +184,8 @@ def create_app(data_dir: Path, token: str, model_dir: Path | None = None):
             if not job:
                 return {'removed': True, 'cleanup_pending': False}
             if engine.active == job_id or job['status'] not in ('COMPLETED', 'CANCELLED', 'FAILED'):
-                raise ValueError('Wait for the job to stop before removing its Kaggle files.')
-            engine.kaggle.cleanup(job_id)
+                raise ValueError('Wait for the job to stop before removing its remote files.')
+            engine.cleanup_remote(job_id)
         return {'ok': True}
 
     @app.post("/api/model/download")
@@ -210,8 +232,9 @@ def create_app(data_dir: Path, token: str, model_dir: Path | None = None):
         if not name or any(ord(char) < 32 for char in name):
             raise HTTPException(400, "Invalid filename.")
         content_length = request.headers.get("content-length")
-        upload_limit = 2 * 1024**3 if selected['device_preference'] == 'kaggle' else MAX_UPLOAD
-        limit_message = 'Online GPU supports files up to 2 GB.' if selected['device_preference'] == 'kaggle' else 'Each file must be smaller than 20 GB.'
+        is_online = selected['device_preference'] in ('kaggle', 'colab')
+        upload_limit = 2 * 1024**3 if is_online else MAX_UPLOAD
+        limit_message = 'Online GPU supports files up to 2 GB.' if is_online else 'Each file must be smaller than 20 GB.'
         if content_length and int(content_length) > upload_limit:
             raise HTTPException(413, limit_message)
         job_id = uuid.uuid4().hex
@@ -275,7 +298,7 @@ def create_app(data_dir: Path, token: str, model_dir: Path | None = None):
 
     @app.put("/api/settings")
     def settings(body: Settings):
-        if body.device is not None and body.device not in ("auto", "cpu", "kaggle"):
+        if body.device is not None and body.device not in ("auto", "cpu", "kaggle", "colab"):
             raise HTTPException(400, "Choose Local GPU, Online GPU or CPU only.")
         if body.language is not None and body.language not in LANGUAGES:
             raise HTTPException(400, 'Unsupported language.')

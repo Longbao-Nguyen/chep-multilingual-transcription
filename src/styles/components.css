@@ -672,3 +672,30 @@
   padding: 12px;
   border-radius: 8px;
 }
+
+.colab-code-form {
+  display: grid;
+  gap: 7px;
+  margin: 4px 0;
+}
+
+.colab-code-form input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 9px;
+  border-radius: 6px;
+  border: 1px solid #557061;
+  background: #172820;
+  color: #eff7ed;
+  font-size: 11px;
+}
+
+.colab-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.colab-code-link {
+  text-decoration: underline;
+}

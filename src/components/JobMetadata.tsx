@@ -9,13 +9,15 @@ export function JobMetadata({ job }: { job: Job }) {
   const deviceSummary =
     config.device_preference === 'kaggle'
       ? 'Online GPU (Kaggle)'
-      : profile?.device === 'cuda'
-        ? 'Local GPU'
-        : profile?.device === 'cpu'
-          ? 'CPU'
-          : config.device_preference === 'cpu'
-            ? 'CPU only'
-            : 'Local GPU';
+      : config.device_preference === 'colab'
+        ? 'Online GPU (Colab)'
+        : profile?.device === 'cuda'
+          ? 'Local GPU'
+          : profile?.device === 'cpu'
+            ? 'CPU'
+            : config.device_preference === 'cpu'
+              ? 'CPU only'
+              : 'Local GPU';
 
   return (
     <details className="job-metadata">

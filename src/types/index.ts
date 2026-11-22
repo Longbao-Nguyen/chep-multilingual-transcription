@@ -1,4 +1,4 @@
-export type DevicePreference = 'kaggle' | 'auto' | 'cpu';
+export type DevicePreference = 'kaggle' | 'colab' | 'auto' | 'cpu';
 
 export type AppTab = 'workspace' | 'history';
 
@@ -48,8 +48,10 @@ export interface Job {
 }
 
 export interface Remote {
-  kernel: string;
-  dataset: string;
+  provider?: string;
+  kernel?: string;
+  dataset?: string;
+  endpoint?: string;
   cleaned: boolean;
   cleanup_error?: string;
 }
@@ -58,6 +60,7 @@ export interface PendingCleanup {
   id: string;
   name: string;
   owner?: string;
+  provider?: string;
   errors: Record<string, string>;
 }
 
@@ -69,6 +72,17 @@ export interface KaggleState {
   progress: number;
   error: string | null;
   download_bytes: number;
+}
+
+export interface ColabState {
+  installed: boolean;
+  status: string;
+  username: string | null;
+  message: string;
+  progress: number;
+  error: string | null;
+  download_bytes: number;
+  auth_url: string | null;
 }
 
 export interface ComponentTask {
@@ -113,6 +127,19 @@ export interface KaggleGpuState {
   quota: KaggleQuota | null;
 }
 
+export interface ColabQuota {
+  balance: string;
+  rate: string;
+  active: number;
+}
+
+export interface ColabGpuState {
+  status: string;
+  username: string | null;
+  message: string;
+  quota: ColabQuota | null;
+}
+
 export interface ModelState {
   status: string;
   progress: number;
@@ -147,9 +174,11 @@ export interface SettingsState {
 
 export interface Status {
   kaggle: KaggleState;
+  kaggle_gpu: KaggleGpuState;
+  colab: ColabState;
+  colab_gpu: ColabGpuState;
   components: ComponentsState;
   queue: QueueState;
-  kaggle_gpu: KaggleGpuState;
   model: ModelState;
   runtime: RuntimeState;
   languages: (ModelConfig & { language: string })[];

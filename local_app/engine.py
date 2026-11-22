@@ -11,6 +11,9 @@ from typing import Any
 
 from .catalog import is_validated, selection
 from .cleanup_manager import CleanupManager
+from .colab_backend import ColabBackend
+from .colab_cli import ColabStopped
+from .colab_gpu import ColabGpuCheck
 from .components import Components
 from .hardware import detect
 from .kaggle_backend import KaggleBackend, MAX_REMOTE_BYTES
@@ -42,7 +45,9 @@ class Engine:
         self.runtime = RuntimeResolver(self.store.root, self.components)
         self.kaggle = KaggleBackend(self.store)
         self.kaggle_gpu = KaggleGpuCheck(self.store.root, self.kaggle.cli)
-        self.cleanup_manager = CleanupManager(self.store, self.kaggle, lambda job_id: self._source(job_id))
+        self.colab = ColabBackend(self.store)
+        self.colab_gpu = ColabGpuCheck(self.store.root, self.colab.cli)
+        self.cleanup_manager = CleanupManager(self.store, self.kaggle, lambda job_id: self._source(job_id), colab=self.colab)
         self.cleanup_lock = self.cleanup_manager.lock
         self.store.recover()
 
@@ -70,6 +75,18 @@ class Engine:
                         'message': 'Kaggle will attach the public model Dataset. No local model or GPU runtime is required.',
                     },
                 )
+            if selected['device_preference'] == 'colab':
+                if self.colab.cli.installed and self.colab.cli.snapshot()['status'] == 'idle':
+                    self.colab.cli.action('check')
+                return (
+                    manager.snapshot(),
+                    {
+                        'status': 'online',
+                        'profile': None,
+                        'attempts': [],
+                        'message': 'Google Colab will run transcription on a T4 GPU session. No local model or GPU runtime is required.',
+                    },
+                )
             if self.state == 'PAUSED' and not self.closing:
                 self.runtime.ensure(selected, manager)
             return manager.snapshot(), self.runtime.snapshot()
@@ -78,11 +95,11 @@ class Engine:
         with self.lock:
             pending = self.store.pending_cleanup()
 
-            def owner(job: dict[str, Any]) -> str | None:
+            def remote_meta(job: dict[str, Any]) -> dict[str, Any]:
                 try:
-                    return json.loads(job['remote'] or '{}').get('owner')
+                    return json.loads(job['remote'] or '{}')
                 except (TypeError, ValueError):
-                    return None
+                    return {}
 
             return {
                 'state': self.state,
@@ -92,7 +109,8 @@ class Engine:
                     {
                         'id': job['id'],
                         'name': job['name'],
-                        'owner': owner(job),
+                        'owner': remote_meta(job).get('owner'),
+                        'provider': remote_meta(job).get('provider', 'kaggle'),
                         'errors': (json.loads(job['cleanup'] or '{}')).get('errors', {}),
                     }
                     for job in pending
@@ -101,6 +119,19 @@ class Engine:
 
     def start_cleanup_recovery(self) -> None:
         self.cleanup_manager.start_recovery()
+
+    def cleanup_remote(self, job_id: str) -> None:
+        job = self.store.get(job_id, include_removed=True)
+        if not job:
+            return
+        try:
+            remote = json.loads(job.get('remote') or '{}')
+        except (TypeError, ValueError):
+            remote = {}
+        if remote.get('provider') == 'colab':
+            self.colab.cleanup(job_id)
+        else:
+            self.kaggle.cleanup(job_id)
 
     def start(self) -> None:
         with self.lock:
@@ -122,6 +153,16 @@ class Engine:
                         raise ValueError('Download Kaggle CLI before starting online transcription.')
                     if self.kaggle.cli.snapshot()['status'] != 'ready':
                         raise ValueError('Connect your Kaggle account before starting online transcription.')
+                    if job['size'] > MAX_REMOTE_BYTES:
+                        raise ValueError(
+                            'Online GPU supports files up to 2 GB. Split this file or add it with Local processing selected.'
+                        )
+                    continue
+                if config['device_preference'] == 'colab':
+                    if not self.colab.cli.installed:
+                        raise ValueError('Download Colab CLI before starting online transcription.')
+                    if self.colab.cli.snapshot()['status'] != 'ready':
+                        raise ValueError('Connect your Google Colab account before starting online transcription.')
                     if job['size'] > MAX_REMOTE_BYTES:
                         raise ValueError(
                             'Online GPU supports files up to 2 GB. Split this file or add it with Local processing selected.'
@@ -152,9 +193,9 @@ class Engine:
                     log.exception('Source cleanup pending after cancellation of job %s', job_id)
                 if job.get('remote'):
                     try:
-                        self.kaggle.cleanup(job_id)
+                        self.cleanup_remote(job_id)
                     except Exception:
-                        log.exception('Kaggle cleanup pending after cancellation of job %s', job_id)
+                        log.exception('Remote cleanup pending after cancellation of job %s', job_id)
             elif self.active == job_id and job['status'] in ACTIVE:
                 self.state = 'PAUSING'
                 self.store.update(job_id, status='CANCELLED')
@@ -205,11 +246,25 @@ class Engine:
                 self.active = None
                 self.process = None
                 self.state = 'PAUSED'
+            try:
+                self.colab.release_session()
+            except Exception:
+                pass
 
     def _job(self, job: dict[str, Any]) -> None:
-        if json.loads(job['config'])['device_preference'] == 'kaggle':
+        provider = json.loads(job['config']).get('device_preference')
+        if provider in ('kaggle', 'colab'):
+            if provider != 'colab':
+                try:
+                    self.colab.release_session()
+                except Exception:
+                    pass
             self._online_job(job)
             return
+        try:
+            self.colab.release_session()
+        except Exception:
+            pass
         run_local_job(
             job=job,
             store=self.store,
@@ -228,13 +283,15 @@ class Engine:
 
     def _online_job(self, job: dict[str, Any]) -> None:
         job_id = job['id']
+        provider = json.loads(job['config']).get('device_preference')
+        backend = self.colab if provider == 'colab' else self.kaggle
 
         def stopped() -> bool:
             return self.closing or self.store.get(job_id)['status'] == 'CANCELLED'
 
         try:
-            self.kaggle.run(job, stopped, self.lock)
-        except KaggleStopped:
+            backend.run(job, stopped, self.lock)
+        except (KaggleStopped, ColabStopped):
             pass
         except Exception as error:
             if not stopped():
@@ -243,7 +300,7 @@ class Engine:
             current = self.store.get(job_id)
             if current['status'] == 'CANCELLED' and not self.closing:
                 try:
-                    self.kaggle.cleanup(job_id)
+                    backend.cleanup(job_id)
                 except Exception:
                     pass
                 self._source(job_id).unlink(missing_ok=True)
@@ -264,8 +321,14 @@ class Engine:
         self.components.close()
         if self.thread:
             self.thread.join(timeout=15)
+        try:
+            self.colab.release_session()
+        except Exception:
+            pass
         self.kaggle_gpu.close()
         self.kaggle.cli.close()
+        self.colab_gpu.close()
+        self.colab.cli.close()
         self.cleanup_manager.close()
         self.store.recover()
         self.worker_job.close()

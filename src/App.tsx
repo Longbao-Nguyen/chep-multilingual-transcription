@@ -102,7 +102,7 @@ export default function App() {
             ? 'Job removed from the queue. Chep will retry resource cleanup automatically.'
             : method === 'DELETE'
               ? 'Job removal and cleanup completed.'
-              : 'Kaggle cleanup completed.',
+              : 'Remote cleanup completed.',
         );
       }
       // Invalidate status requests that began during the mutation too.
@@ -163,8 +163,9 @@ export default function App() {
       : status?.runtime.status === 'ready'
         ? status.runtime.profile ?? undefined
         : undefined;
-  const online = status?.settings.device === 'kaggle';
+  const online = status?.settings.device === 'kaggle' || status?.settings.device === 'colab';
   const kaggleWorking = ['downloading', 'connecting'].includes(status?.kaggle.status || '');
+  const colabWorking = ['downloading', 'connecting', 'awaiting_code'].includes(status?.colab.status || '');
   const modelReady = online || status?.model.status === 'ready';
   const modelWorking = !online && ['downloading', 'verifying'].includes(status?.model.status || '');
   const checking =
@@ -198,6 +199,7 @@ export default function App() {
         busy={busy}
         locked={locked}
         kaggleWorking={kaggleWorking}
+        colabWorking={colabWorking}
         onSelectTab={setTab}
         onAction={(path, method, body) => void action(path, method, body)}
         onError={setError}
@@ -308,6 +310,7 @@ export default function App() {
                   locked={locked}
                   busy={busy}
                   kaggleWorking={kaggleWorking}
+                  colabWorking={colabWorking}
                   onAction={(path, method, body) => void action(path, method, body)}
                 />
                 <ModelCard

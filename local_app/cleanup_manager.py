@@ -8,6 +8,7 @@ import threading
 from pathlib import Path
 from typing import Any, Callable
 
+from .colab_backend import ColabBackend
 from .kaggle_backend import KaggleBackend
 from .store import Store
 
@@ -22,9 +23,11 @@ class CleanupManager:
         store: Store,
         kaggle: KaggleBackend,
         source_path_fn: Callable[[str], Path],
+        colab: ColabBackend | None = None,
     ) -> None:
         self.store = store
         self.kaggle = kaggle
+        self.colab = colab
         self._source_path = source_path_fn
         self.lock = threading.RLock()
         self.thread: threading.Thread | None = None
@@ -86,7 +89,7 @@ class CleanupManager:
                 operation()
             except OSError as exc:
                 if key == 'remote':
-                    cleanup['errors'][key] = 'Kaggle cleanup could not start. Check the CLI installation and retry.'
+                    cleanup['errors'][key] = 'Remote cleanup could not start. Check the CLI installation and retry.'
                     log.warning('Remote cleanup pending for job %s: %s', job_id, type(exc).__name__)
                 else:
                     cleanup['errors'][key] = (
@@ -118,7 +121,18 @@ class CleanupManager:
                 shutil.rmtree(work)
 
         attempt('work', remove_work)
-        attempt('remote', lambda: self.kaggle.cleanup(job_id))
+
+        def remove_remote() -> None:
+            try:
+                remote = json.loads(job.get('remote') or '{}')
+            except (TypeError, ValueError):
+                remote = {}
+            if remote.get('provider') == 'colab' and self.colab is not None:
+                self.colab.cleanup(job_id)
+            else:
+                self.kaggle.cleanup(job_id)
+
+        attempt('remote', remove_remote)
         result = self._cleanup_result(job_id)
         if not result['cleanup_pending']:
             self.store.delete(job_id)
