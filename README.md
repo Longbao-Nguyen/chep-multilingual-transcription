@@ -1,6 +1,8 @@
 # Chep
 
-Multilingual transcription for Windows.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+
+Multilingual transcription for Windows. A web version is also available at [chep-transcript.vercel.app](https://chep-transcript.vercel.app/) (Google Colab is not supported in the web version).
 
 ## About This Project
 
@@ -102,3 +104,9 @@ All five optimization stages below were re-evaluated end-to-end on the **same pu
 Model authors and maintainers: [Bofeng Huang](https://huggingface.co/bofenghuang/whisper-large-v3-french-distil-dec16), [Distil-Whisper](https://huggingface.co/distil-whisper/distil-large-v3.5-ct2), [adriszmar](https://huggingface.co/adriszmar/whisper-large-v3-turbo-es), and [VinAI](https://huggingface.co/vinai/PhoWhisper-medium). Model artifacts under [Chep-Transcript](https://www.kaggle.com/organizations/french-transcript/) / `nunu-willump` preserve or convert these upstream assets without retraining.
 
 Built on [OpenAI Whisper](https://github.com/openai/whisper), [faster-whisper](https://github.com/SYSTRAN/faster-whisper), [CTranslate2](https://github.com/OpenNMT/CTranslate2), [Hugging Face](https://huggingface.co/) and [Kaggle](https://www.kaggle.com/), with human-verified evaluation data from [FLEURS](https://huggingface.co/datasets/google/fleurs), [eustlb/french-long-form-test](https://huggingface.co/datasets/eustlb/french-long-form-test), [TED-LIUM long-form](https://huggingface.co/datasets/distil-whisper/tedlium-long-form), [Multilingual TEDx (OpenSLR 100)](https://huggingface.co/datasets/deepdml/mtedx), and [VietMed](https://huggingface.co/datasets/leduckhai/VietMed).
+
+## License
+
+This project is licensed under the [MIT License](./LICENSE).
+
+Third-party software notices and licenses are documented in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).

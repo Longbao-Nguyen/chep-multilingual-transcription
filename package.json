@@ -2,6 +2,7 @@
   "name": "french-transcript-local",
   "private": true,
   "version": "0.7.0",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "build": "tsc --noEmit && vite build",
